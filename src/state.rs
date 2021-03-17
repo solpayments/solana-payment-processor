@@ -1,4 +1,6 @@
-use solana_sdk::{ clock::UnixTimestamp };
+use solana_sdk::{
+    clock::UnixTimestamp,
+};
 use solana_program::{ pubkey::Pubkey };
 
 pub struct MerchantAccount {
@@ -16,6 +18,7 @@ pub struct OrderAccount {
     pub created: UnixTimestamp,
     pub modified: UnixTimestamp,
     pub merchant_account: Pubkey,
+    pub mint_pubkey: Pubkey, // represents the token/currency in use
     pub payer_pubkey: Pubkey,
     pub order_id: [u8; 32],
     pub expected_amount: u64,
