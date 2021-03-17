@@ -7,6 +7,9 @@ publish = false
 
 [dependencies]
 solana-program = "=1.5.15"
+solana-sdk = "=1.5.15"
+thiserror = "1.0.23"
+borsh = "=0.8.2"
 
 [features]
 test-bpf = []
@@ -14,7 +17,6 @@ test-bpf = []
 [dev-dependencies]
 assert_matches = "1.4.0"
 solana-program-test = "=1.5.15"
-solana-sdk = "=1.5.15"
 solana-validator = "=1.5.15"
 
 [lib]
