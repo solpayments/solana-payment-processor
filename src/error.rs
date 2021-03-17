@@ -6,6 +6,9 @@ pub enum PaymentProcessorError {
     /// Invalid instruction
     #[error("Invalid Instruction")]
     InvalidInstruction,
+    /// Not Rent Exempt
+    #[error("Not Rent Exempt")]
+    NotRentExempt,
 }
 
 impl From<PaymentProcessorError> for ProgramError {
