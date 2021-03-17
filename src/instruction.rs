@@ -15,9 +15,8 @@ pub enum PaymentProcessorInstruction {
     /// Accounts expected:
     ///
     /// 0. `[signer]` The account of the person initializing the loan
-    /// 1. `[]` The payments receipt
-    /// 2. `[writable]` The merchant account.  Owned by this program
-    /// 3. `[]` The rent sysvar
+    /// 1. `[writable]` The merchant account.  Owned by this program
+    /// 2. `[]` The rent sysvar
     RegisterMerchant,
 }
 
@@ -41,14 +40,12 @@ impl PaymentProcessorInstruction {
 pub fn register_merchant(
     program_id: Pubkey,
     signer_pubkey: Pubkey,
-    payments_acc_pubkey: Pubkey,
     merchant_acc_pubkey: Pubkey,
 ) -> Instruction {
     Instruction {
         program_id,
         accounts: vec![
             AccountMeta::new(signer_pubkey, true),
-            AccountMeta::new_readonly(payments_acc_pubkey, false),
             AccountMeta::new(merchant_acc_pubkey, false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
