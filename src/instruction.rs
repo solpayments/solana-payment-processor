@@ -59,18 +59,22 @@ mod test {
     use {
         super::*,
         assert_matches::*,
-        // solana_program::{
-        //     account_info::AccountInfo,
-        //     // rent::Rent,
-        // },
+        solana_program::{
+            hash::Hash,
+            rent::Rent,
+            system_instruction,
+        },
         solana_program_test::*,
         solana_sdk::{
+            account::Account,
             // clock::Epoch,
-            signature::Signer,
+            signature::{Keypair, Signer},
             transaction::Transaction,
+            transport::TransportError,
         },
-        // spl_token,
+        spl_token,
         std::str::FromStr,
+        // std::mem,
         crate::processor::{ process_instruction },
     };
 
@@ -93,6 +97,34 @@ mod test {
     //         Epoch::default(),
     //     )
     // }
+
+    pub async fn create_account(
+        banks_client: &mut BanksClient,
+        payer: &Keypair,
+        recent_blockhash: &Hash,
+        account: &Keypair,
+        pool_mint: &Pubkey,
+        owner: &Pubkey,
+    ) -> Result<(), TransportError> {
+        let rent = banks_client.get_rent().await.unwrap();
+        let account_rent = rent.minimum_balance(165);
+
+        let mut transaction = Transaction::new_with_payer(
+            &[
+                system_instruction::create_account(
+                    &payer.pubkey(),
+                    &account.pubkey(),
+                    account_rent,
+                    165 as u64,
+                    &spl_token::id(),
+                ),
+            ],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[payer, account], *recent_blockhash);
+        banks_client.process_transaction(transaction).await?;
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_register_merchant() {
@@ -121,13 +153,35 @@ mod test {
         //     &mut data,
         // );
 
+        // let signer_account = Account::new(2000000, 33, &account_key);
+        // let merchant_acc = Account::new(
+        //     Rent::default().minimum_balance(33),
+        //     33,
+        //     &program_id,
+        // );
+
         let instruction = register_merchant(program_id, account_key, merchant_key);
 
-        let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+        let mut test = ProgramTest::new(
             "bpf_program_template",
             program_id,
             processor!(process_instruction),
-        )
+        );
+
+        test.add_account(account_key, Account {
+            lamports: 2000000,
+            // data: vec![0_u8; mem::size_of::<u32>()],
+            owner: spl_token::ID,
+            ..Account::default()
+        });
+        test.add_account(merchant_key, Account {
+            lamports: Rent::default().minimum_balance(33),
+            // data: vec![0_u8; mem::size_of::<u32>()],
+            owner: program_id,
+            ..Account::default()
+        });
+
+        let (mut banks_client, payer, recent_blockhash) = test
         .start()
         .await;
 
@@ -135,7 +189,7 @@ mod test {
             &[instruction],
             Some(&payer.pubkey()),
         );
-        transaction.sign(&[&payer], recent_blockhash);
+        transaction.sign(&[&payer, &account_key], recent_blockhash);
 
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
     }
