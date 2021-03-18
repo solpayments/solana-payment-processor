@@ -1,8 +1,6 @@
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
-use solana_sdk::{
-    clock::UnixTimestamp,
-};
 use solana_program::{
+    clock::UnixTimestamp,
     program_error::ProgramError,
     pubkey::Pubkey,
     program_pack::{IsInitialized, Pack, Sealed},
