@@ -60,38 +60,7 @@ impl MerchantAccount {
     pub const LEN: usize = 33;
 }
 
-// impl Pack for MerchantAccount {
-//     const LEN: usize = 33;
-//     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
-//         let src = array_ref![src, 0, MerchantAccount::LEN];
-//         let (is_initialized, merchant_pubkey) = array_refs![src, 1, 32];
-//         let is_initialized = match is_initialized {
-//             [0] => false,
-//             [1] => true,
-//             _ => return Err(ProgramError::InvalidAccountData),
-//         };
-
-//         Ok(MerchantAccount {
-//             is_initialized,
-//             merchant_pubkey: Pubkey::new_from_array(*merchant_pubkey),
-//         })
-//     }
-
-//     fn pack_into_slice(&self, dst: &mut [u8]) {
-//         let dst = array_mut_ref![dst, 0, MerchantAccount::LEN];
-//         let (is_initialized_dst, merchant_pubkey_dst) = mut_array_refs![dst, 1, 32];
-
-//         let MerchantAccount {
-//             is_initialized,
-//             merchant_pubkey,
-//         } = self;
-
-//         is_initialized_dst[0] = *is_initialized as u8;
-//         merchant_pubkey_dst.copy_from_slice(merchant_pubkey.as_ref());
-//     }
-// }
-
-// impl for MerchantAccount
+// impl for OrderAccount
 impl Sealed for OrderAccount {}
 
 impl IsInitialized for OrderAccount {
