@@ -87,7 +87,7 @@ pub fn process_express_checkout(
     accounts: &[AccountInfo],
     amount: u64,
     merchant_token_pubkey: [u8; 32],
-    order_id: [u8; 32],
+    order_id: Vec<u8>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -101,6 +101,11 @@ pub fn process_express_checkout(
     // ensure signer can sign
     if !signer_info.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
+    }
+    // get the merchant account
+    let mut merchant_account = MerchantAccount::unpack(&merchant_acc_info.data.borrow())?;
+    if merchant_account.is_initialized() {
+        return Err(ProgramError::AccountAlreadyInitialized);
     }
     // ensure payer token account is owned by this program
     if *payer_token_info.owner != *program_id {
