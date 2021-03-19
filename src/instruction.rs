@@ -5,6 +5,7 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar,
 };
+use spl_token;
 
 use crate::error::PaymentProcessorError::InvalidInstruction;
 
@@ -14,10 +15,28 @@ pub enum PaymentProcessorInstruction {
     ///
     /// Accounts expected:
     ///
-    /// 0. `[signer]` The account of the person initializing the loan
+    /// 0. `[signer]` The account of the person initializing the merchant account
     /// 1. `[writable]` The merchant account.  Owned by this program
     /// 2. `[]` The rent sysvar
     RegisterMerchant,
+    /// Express Checkout - create order and pay for it in one transaction
+    ///
+    /// Accounts expected:
+    ///
+    /// 0. `[signer]` The account of the person initializing the transaction
+    /// 1. `[writable]` The payer's token account to be used for the payment
+    /// 2. `[writable]` The merchant account.  Owned by this program
+    /// 3. `[]` The rent sysvar
+    /// 4. `[]` The token program
+    ExpressCheckout {
+        amount: u64,
+        /// the pubkey of the merchant -> this is where the money is to be sent
+        /// we are receiving it as data and not an account because during the
+        /// express checkout we don't want the UI to have to create this account
+        merchant_token_pubkey: [u8; 32],
+        /// the external order id (as in issued by the merchant)
+        order_id: [u8; 32],
+    },
 }
 
 impl PaymentProcessorInstruction {
@@ -55,20 +74,48 @@ pub fn register_merchant(
     }
 }
 
+/// Creates an 'ExpressCheckout' instruction.
+pub fn express_checkout(
+    program_id: Pubkey,
+    signer_pubkey: Pubkey,
+    payer_token_acc_pubkey: Pubkey,
+    merchant_acc_pubkey: Pubkey,
+    amount: u64,
+    merchant_token_pubkey: [u8; 32],
+    order_id: [u8; 32]
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(signer_pubkey, true),
+            AccountMeta::new(payer_token_acc_pubkey, false),
+            AccountMeta::new(merchant_acc_pubkey, false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+        ],
+        data: PaymentProcessorInstruction::ExpressCheckout {
+            amount,
+            merchant_token_pubkey,
+            order_id
+        }
+        .pack_into_vec(),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use {
         super::*,
         crate::processor::process_instruction,
-        crate::state::MerchantAccount,
+        crate::state::{ MerchantAccount, Serdes},
         assert_matches::*,
-        solana_program::{program_pack::Pack, rent::Rent, system_instruction},
+        solana_program::{rent::Rent, system_instruction},
         solana_program_test::*,
         solana_sdk::{
             signature::{Keypair, Signer},
             transaction::Transaction,
         },
-        std::str::FromStr,
+        std::str::{FromStr},
         std::convert::TryInto,
     };
 
@@ -130,6 +177,7 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(true, merchant_data.is_initialized);
-        assert_eq!(merchant_kepair.pubkey(), merchant_data.merchant_pubkey);
+        assert_eq!(merchant_kepair.pubkey(), Pubkey::new_from_array(merchant_data.merchant_pubkey));
+        assert_eq!(merchant_kepair.pubkey().to_bytes(), merchant_data.merchant_pubkey);
     }
 }
