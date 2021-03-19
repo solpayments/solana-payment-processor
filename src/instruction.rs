@@ -35,7 +35,7 @@ pub enum PaymentProcessorInstruction {
         /// express checkout we don't want the UI to have to create this account
         merchant_token_pubkey: [u8; 32],
         /// the external order id (as in issued by the merchant)
-        order_id: [u8; 32],
+        order_id: Vec<u8>,
     },
 }
 
@@ -82,7 +82,7 @@ pub fn express_checkout(
     merchant_acc_pubkey: Pubkey,
     amount: u64,
     merchant_token_pubkey: [u8; 32],
-    order_id: [u8; 32]
+    order_id: Vec<u8>,
 ) -> Instruction {
     Instruction {
         program_id,
@@ -96,7 +96,7 @@ pub fn express_checkout(
         data: PaymentProcessorInstruction::ExpressCheckout {
             amount,
             merchant_token_pubkey,
-            order_id
+            order_id,
         }
         .pack_into_vec(),
     }
@@ -107,7 +107,7 @@ mod test {
     use {
         super::*,
         crate::processor::process_instruction,
-        crate::state::{ MerchantAccount, Serdes},
+        crate::state::{MerchantAccount, Serdes},
         assert_matches::*,
         solana_program::{rent::Rent, system_instruction},
         solana_program_test::*,
@@ -115,8 +115,8 @@ mod test {
             signature::{Keypair, Signer},
             transaction::Transaction,
         },
-        std::str::{FromStr},
         std::convert::TryInto,
+        std::str::FromStr,
     };
 
     #[tokio::test]
@@ -177,7 +177,13 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(true, merchant_data.is_initialized);
-        assert_eq!(merchant_kepair.pubkey(), Pubkey::new_from_array(merchant_data.merchant_pubkey));
-        assert_eq!(merchant_kepair.pubkey().to_bytes(), merchant_data.merchant_pubkey);
+        assert_eq!(
+            merchant_kepair.pubkey(),
+            Pubkey::new_from_array(merchant_data.merchant_pubkey)
+        );
+        assert_eq!(
+            merchant_kepair.pubkey().to_bytes(),
+            merchant_data.merchant_pubkey
+        );
     }
 }
