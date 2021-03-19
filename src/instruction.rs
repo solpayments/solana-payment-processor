@@ -60,14 +60,16 @@ mod test {
     use {
         super::*,
         crate::processor::process_instruction,
+        crate::state::MerchantAccount,
         assert_matches::*,
-        solana_program::{rent::Rent, system_instruction},
+        solana_program::{program_pack::Pack, rent::Rent, system_instruction},
         solana_program_test::*,
         solana_sdk::{
             signature::{Keypair, Signer},
             transaction::Transaction,
         },
         std::str::FromStr,
+        std::convert::TryInto,
     };
 
     #[tokio::test]
@@ -88,8 +90,8 @@ mod test {
             &[system_instruction::create_account(
                 &payer.pubkey(),
                 &merchant_kepair.pubkey(),
-                Rent::default().minimum_balance(33),
-                33,
+                Rent::default().minimum_balance(MerchantAccount::LEN),
+                MerchantAccount::LEN.try_into().unwrap(),
                 &program_id,
             )],
             Some(&payer.pubkey()),
@@ -111,7 +113,23 @@ mod test {
             Some(&payer.pubkey()),
         );
         transaction.sign(&[&payer], recent_blockhash);
-
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+
+        // test contents of merchant account
+        let merchant_account = banks_client.get_account(merchant_kepair.pubkey()).await;
+        let merchant_account = match merchant_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        let merchant_data = MerchantAccount::unpack(&merchant_account.data);
+        let merchant_data = match merchant_data {
+            Ok(data) => data,
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(true, merchant_data.is_initialized);
+        assert_eq!(merchant_kepair.pubkey(), merchant_data.merchant_pubkey);
     }
 }
