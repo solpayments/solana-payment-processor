@@ -12,11 +12,13 @@ pub struct MerchantAccount {
     pub merchant_pubkey: Pubkey,
 }
 
+#[derive(Debug)]
 pub enum OrderStatus {
     Pending = 0,
     Paid = 1,
 }
 
+#[derive(Debug)]
 pub struct OrderAccount {
     pub status: u8,
     pub created: UnixTimestamp,
