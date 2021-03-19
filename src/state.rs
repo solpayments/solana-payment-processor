@@ -6,6 +6,7 @@ use solana_program::{
     program_pack::{IsInitialized, Pack, Sealed},
 };
 
+#[derive(Debug)]
 pub struct MerchantAccount {
     pub is_initialized: bool,
     pub merchant_pubkey: Pubkey,
