@@ -80,6 +80,7 @@ pub fn express_checkout(
     program_id: Pubkey,
     signer_pubkey: Pubkey,
     payer_token_acc_pubkey: Pubkey,
+    order_acc_pubkey: Pubkey,
     merchant_acc_pubkey: Pubkey,
     amount: u64,
     merchant_token_pubkey: [u8; 32],
@@ -90,7 +91,8 @@ pub fn express_checkout(
         accounts: vec![
             AccountMeta::new(signer_pubkey, true),
             AccountMeta::new(payer_token_acc_pubkey, false),
-            AccountMeta::new(merchant_acc_pubkey, false),
+            AccountMeta::new(order_acc_pubkey, false),
+            AccountMeta::new_readonly(merchant_acc_pubkey, false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
             AccountMeta::new_readonly(spl_token::id(), false),
         ],
@@ -110,7 +112,7 @@ mod test {
         crate::processor::process_instruction,
         crate::state::{MerchantAccount, Serdes},
         assert_matches::*,
-        solana_program::{rent::Rent, system_instruction},
+        solana_program::{hash::Hash, rent::Rent, system_instruction},
         solana_program_test::*,
         solana_sdk::{
             signature::{Keypair, Signer},
@@ -120,8 +122,7 @@ mod test {
         std::str::FromStr,
     };
 
-    #[tokio::test]
-    async fn test_register_merchant() {
+    async fn create_merchant_account() -> (Pubkey, Keypair, BanksClient, Keypair, Hash) {
         let program_id = Pubkey::from_str(&"mosh111111111111111111111111111111111111111").unwrap();
         let merchant_kepair = Keypair::new();
 
@@ -162,6 +163,14 @@ mod test {
         );
         transaction.sign(&[&payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+        return (program_id, merchant_kepair, banks_client, payer, recent_blockhash);
+    }
+
+    #[tokio::test]
+    async fn test_register_merchant() {
+        let result = create_merchant_account().await;
+        let merchant_kepair = result.1;
+        let mut banks_client = result.2;
 
         // test contents of merchant account
         let merchant_account = banks_client.get_account(merchant_kepair.pubkey()).await;
