@@ -25,9 +25,10 @@ pub enum PaymentProcessorInstruction {
     ///
     /// 0. `[signer]` The account of the person initializing the transaction
     /// 1. `[writable]` The payer's token account to be used for the payment
-    /// 2. `[writable]` The merchant account.  Owned by this program
-    /// 3. `[]` The rent sysvar
-    /// 4. `[]` The token program
+    /// 2. `[writable]` The order account.  Owned by this program
+    /// 3. `[writable]` The merchant account.  Owned by this program
+    /// 4. `[]` The rent sysvar
+    /// 5. `[]` The token program
     ExpressCheckout {
         amount: u64,
         /// the pubkey of the merchant -> this is where the money is to be sent
