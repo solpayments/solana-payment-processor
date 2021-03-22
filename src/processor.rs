@@ -104,15 +104,15 @@ pub fn process_express_checkout(
     }
     // get the merchant account
     let mut merchant_account = MerchantAccount::unpack(&merchant_acc_info.data.borrow())?;
-    if merchant_account.is_initialized() {
-        return Err(ProgramError::AccountAlreadyInitialized);
+    if !merchant_account.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
     }
-    // ensure payer token account is owned by this program
-    if *payer_token_info.owner != *program_id {
+    // ensure payer token account is owned by token program
+    if *payer_token_info.owner != spl_token::id() {
         return Err(ProgramError::IncorrectProgramId);
     }
     // ensure merchant account is owned by this program
-    if *merchant_acc_info.owner != spl_token::id() {
+    if *merchant_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
 
