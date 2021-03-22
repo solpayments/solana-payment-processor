@@ -1,7 +1,7 @@
 use crate::{
     error::PaymentProcessorError,
     instruction::PaymentProcessorInstruction,
-    state::{MerchantAccount, Serdes},
+    state::{MerchantAccount, OrderAccount, Serdes},
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -13,6 +13,7 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 use spl_token;
+use spl_token::state::{Account as TokenAccount, AccountState, Mint};
 
 /// Processes an instruction
 pub fn process_instruction(
@@ -93,6 +94,7 @@ pub fn process_express_checkout(
 
     let signer_info = next_account_info(account_info_iter)?;
     let payer_token_info = next_account_info(account_info_iter)?;
+    let order_acc_info = next_account_info(account_info_iter)?;
     let merchant_acc_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
@@ -114,6 +116,19 @@ pub fn process_express_checkout(
     // ensure merchant account is owned by this program
     if *merchant_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
+    }
+    // ensure order account is owned by this program
+    if *order_acc_info.owner != *program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // ensure order account is rent exempt
+    if !rent.is_exempt(order_acc_info.lamports(), OrderAccount::LEN) {
+        return Err(PaymentProcessorError::NotRentExempt.into());
+    }
+    // get the order account
+    let mut order_account = OrderAccount::unpack(&order_acc_info.data.borrow())?;
+    if order_account.is_initialized() {
+        return Err(ProgramError::AccountAlreadyInitialized);
     }
 
     Ok(())
