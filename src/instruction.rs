@@ -6,6 +6,7 @@ use solana_program::{
     sysvar,
 };
 use spl_token::{self};
+use std::convert::TryInto;
 
 use crate::error::PaymentProcessorError::InvalidInstruction;
 
@@ -50,6 +51,21 @@ impl PaymentProcessorInstruction {
 
         Ok(match tag {
             0 => Self::RegisterMerchant,
+            1 => {
+                let amount: u64 = input
+                    .get(..8)
+                    .and_then(|slice| slice.try_into().ok())
+                    .map(u64::from_le_bytes)
+                    .ok_or(InvalidInstruction)?;
+                let order_id: Vec<u8> = input
+                    .get(8..)
+                    .and_then(|slice| slice.try_into().ok())
+                    .ok_or(InvalidInstruction)?;
+                Self::ExpressCheckout {
+                    amount,
+                    order_id,
+                }
+            }
             _ => return Err(InvalidInstruction.into()),
         })
     }
@@ -99,11 +115,9 @@ pub fn express_checkout(
             AccountMeta::new_readonly(sysvar::clock::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
-        data: PaymentProcessorInstruction::ExpressCheckout {
-            amount,
-            order_id,
-        }
-        .pack_into_vec(),
+        data: PaymentProcessorInstruction::ExpressCheckout { amount, order_id }
+            .try_to_vec()
+            .unwrap(),
     }
 }
 
@@ -114,30 +128,62 @@ mod test {
         crate::processor::process_instruction,
         crate::state::{MerchantAccount, OrderAccount, Serdes},
         assert_matches::*,
-        solana_program::{hash::Hash, rent::Rent, system_instruction},
+        solana_program::{hash::Hash, program_pack::Pack, rent::Rent, system_instruction},
         solana_program_test::*,
         solana_sdk::{
             signature::{Keypair, Signer},
             transaction::Transaction,
         },
-        spl_token::instruction::initialize_account,
+        spl_token::{
+            instruction::{initialize_account, initialize_mint},
+            state::{Account as TokenAccount, Mint},
+        },
         std::convert::TryInto,
         std::str::FromStr,
     };
 
-    fn create_token_account(
+    fn create_mint_transaction(
+        payer: &Keypair,
+        mint: &Keypair,
+        mint_authority: &Keypair,
+        recent_blockhash: Hash,
+    ) -> Transaction {
+        let instructions = [
+            system_instruction::create_account(
+                &payer.pubkey(),
+                &mint.pubkey(),
+                Rent::default().minimum_balance(Mint::LEN),
+                Mint::LEN as u64,
+                &spl_token::id(),
+            ),
+            initialize_mint(
+                &spl_token::id(),
+                &mint.pubkey(),
+                &mint_authority.pubkey(),
+                None,
+                0,
+            )
+            .unwrap(),
+        ];
+        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        transaction.partial_sign(&[payer, mint], recent_blockhash);
+        transaction
+    }
+
+    fn create_token_account_transaction(
         payer: &Keypair,
         mint: &Keypair,
         recent_blockhash: Hash,
         token_account: &Keypair,
         token_account_owner: &Pubkey,
+        amount: u64,
     ) -> Transaction {
         let instructions = [
             system_instruction::create_account(
                 &payer.pubkey(),
                 &token_account.pubkey(),
-                Rent::default().minimum_balance(165),
-                165,
+                Rent::default().minimum_balance(TokenAccount::LEN) + amount,
+                TokenAccount::LEN as u64,
                 &spl_token::id(),
             ),
             initialize_account(
@@ -236,7 +282,6 @@ mod test {
 
     #[tokio::test]
     async fn test_express_checkout() {
-        let order_keypair = Keypair::new();
         let result = create_merchant_account().await;
         let program_id = result.0;
         let merchant_keypair = result.1;
@@ -245,6 +290,7 @@ mod test {
         let recent_blockhash = result.4;
 
         // first create order account
+        let order_keypair = Keypair::new();
         let mut create_order_tx = Transaction::new_with_payer(
             &[system_instruction::create_account(
                 &payer.pubkey(),
@@ -264,15 +310,30 @@ mod test {
         // next create token account for test
         let mint_keypair = Keypair::new();
         let token_keypair = Keypair::new();
-        let token_tx = create_token_account(
-            &payer,
-            &mint_keypair,
-            recent_blockhash,
-            &token_keypair,
-            &payer.pubkey(),
-        );
+        // create and initialize mint
         assert_matches!(
-            banks_client.process_transaction(token_tx).await,
+            banks_client
+                .process_transaction(create_mint_transaction(
+                    &payer,
+                    &mint_keypair,
+                    &payer,
+                    recent_blockhash
+                ))
+                .await,
+            Ok(())
+        );
+        // create and initialize token
+        assert_matches!(
+            banks_client
+                .process_transaction(create_token_account_transaction(
+                    &payer,
+                    &mint_keypair,
+                    recent_blockhash,
+                    &token_keypair,
+                    &payer.pubkey(),
+                    2000,
+                ))
+                .await,
             Ok(())
         );
         // then call express checkout ix
