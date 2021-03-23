@@ -88,7 +88,6 @@ pub fn process_express_checkout(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     amount: u64,
-    // merchant_token_pubkey: [u8; 32],
     order_id: Vec<u8>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
@@ -139,11 +138,13 @@ pub fn process_express_checkout(
     order_account.status = OrderStatus::Paid as u8;
     order_account.created = *timestamp;
     order_account.modified = *timestamp;
-    order_account.merchant_account = merchant_acc_info.key.to_bytes();
+    order_account.merchant_pubkey = merchant_acc_info.key.to_bytes();
     order_account.mint_pubkey = merchant_acc_info.key.to_bytes();
     order_account.payer_pubkey = signer_info.key.to_bytes();
-    order_account.order_id = order_id;
     order_account.expected_amount = amount;
+    order_account.paid_amount = 0;
+    order_account.fee_amount = 0;
+    order_account.order_id = order_id;
     OrderAccount::pack(&order_account, &mut order_acc_info.data.borrow_mut());
 
     Ok(())
