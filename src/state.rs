@@ -22,7 +22,7 @@ pub struct MerchantAccount {
     pub merchant_pubkey: PublicKey,
 }
 
-#[derive(Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
 pub enum OrderStatus {
     Uninitialized = 0,
     Pending = 1,
@@ -34,13 +34,13 @@ pub struct OrderAccount {
     pub status: u8,
     pub created: UnixTimestamp,
     pub modified: UnixTimestamp,
-    pub merchant_account: PublicKey,
+    pub merchant_pubkey: PublicKey,
     pub mint_pubkey: PublicKey, // represents the token/currency in use
     pub payer_pubkey: PublicKey,
-    pub order_id: Vec<u8>,
     pub expected_amount: u64,
     pub paid_amount: u64,
     pub fee_amount: u64,
+    pub order_id: Vec<u8>,  // size of this turns out to be 4
 }
 
 // impl for MerchantAccount
@@ -70,5 +70,5 @@ impl IsInitialized for OrderAccount {
 }
 
 impl OrderAccount {
-    pub const LEN: usize = 145;
+    pub const LEN: usize = 141;
 }
