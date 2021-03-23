@@ -22,6 +22,12 @@ impl From<PaymentProcessorError> for ProgramError {
     }
 }
 
+impl<T> DecodeError<T> for PaymentProcessorError {
+    fn type_of() -> &'static str {
+        "Solana Payment Processor Error"
+    }
+}
+
 impl PrintProgramError for PaymentProcessorError {
     fn print<E>(&self)
     where
