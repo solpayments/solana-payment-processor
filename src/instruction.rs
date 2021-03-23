@@ -31,12 +31,14 @@ pub enum PaymentProcessorInstruction {
     /// 5. `[]` The clock sysvar
     /// 6. `[]` The rent sysvar
     ExpressCheckout {
+        #[allow(dead_code)] // not dead code..
         amount: u64,
         /// the pubkey of the merchant -> this is where the money is to be sent
         /// we are receiving it as data and not an account because during the
         /// express checkout we don't want the UI to have to create this account
         // merchant_token_pubkey: [u8; 32],
         /// the external order id (as in issued by the merchant)
+        #[allow(dead_code)] // not dead code..
         order_id: Vec<u8>,
     },
 }
