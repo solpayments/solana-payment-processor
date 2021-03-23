@@ -139,6 +139,7 @@ mod test {
             state::{Account as TokenAccount, Mint},
         },
         std::convert::TryInto,
+        std::mem::size_of_val,
         std::str::FromStr,
     };
 
@@ -349,6 +350,7 @@ mod test {
             )],
             Some(&payer.pubkey()),
         );
+        println!("SIZE >> {:?} ", size_of_val(&String::from("#123").into_bytes()));
         transaction.sign(&[&payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
     }
