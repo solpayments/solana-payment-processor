@@ -40,39 +40,8 @@ pub enum PaymentProcessorInstruction {
         // merchant_token_pubkey: [u8; 32],
         /// the external order id (as in issued by the merchant)
         #[allow(dead_code)] // not dead code..
-        order_id: Vec<u8>,
+        order_id: String,
     },
-}
-
-impl PaymentProcessorInstruction {
-    /// Unpacks a byte buffer into a [PaymentProcessorInstruction](enum.PaymentProcessorInstruction.html).
-    pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-        let (tag, _rest) = input.split_first().ok_or(InvalidInstruction)?;
-
-        Ok(match tag {
-            0 => Self::RegisterMerchant,
-            1 => {
-                let amount: u64 = input
-                    .get(..8)
-                    .and_then(|slice| slice.try_into().ok())
-                    .map(u64::from_le_bytes)
-                    .ok_or(InvalidInstruction)?;
-                let order_id: Vec<u8> = input
-                    .get(8..)
-                    .and_then(|slice| slice.try_into().ok())
-                    .ok_or(InvalidInstruction)?;
-                Self::ExpressCheckout {
-                    amount,
-                    order_id,
-                }
-            }
-            _ => return Err(InvalidInstruction.into()),
-        })
-    }
-
-    pub fn pack_into_vec(&self) -> Vec<u8> {
-        self.try_to_vec().expect("try_to_vec")
-    }
 }
 
 /// Creates an 'RegisterMerchant' instruction.
@@ -102,7 +71,7 @@ pub fn express_checkout(
     order_acc_pubkey: Pubkey,
     merchant_acc_pubkey: Pubkey,
     amount: u64,
-    order_id: Vec<u8>,
+    order_id: String,
 ) -> Instruction {
     Instruction {
         program_id,
@@ -125,10 +94,11 @@ pub fn express_checkout(
 mod test {
     use {
         super::*,
-        crate::processor::process_instruction,
-        crate::state::{MerchantAccount, OrderAccount, Serdes},
+        // crate::processor::process_instruction,
+        crate::instruction::PaymentProcessorInstruction,
+        crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         assert_matches::*,
-        solana_program::{hash::Hash, program_pack::Pack, rent::Rent, system_instruction},
+        solana_program::{hash::Hash, program_pack::{IsInitialized, Pack}, rent::Rent, system_instruction},
         solana_program_test::*,
         solana_sdk::{
             signature::{Keypair, Signer},
@@ -207,7 +177,7 @@ mod test {
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
             "solana_payment_processor",
             program_id,
-            processor!(process_instruction),
+            processor!(PaymentProcessorInstruction::process),
         )
         .start()
         .await;
@@ -290,14 +260,18 @@ mod test {
         let payer = result.3;
         let recent_blockhash = result.4;
 
+        let amount = 2000;
+        let order_id = String::from("1337");
+        let order_account_size = OrderAccount::MIN_LEN + order_id.chars().count() + 4;
+
         // first create order account
         let order_keypair = Keypair::new();
         let mut create_order_tx = Transaction::new_with_payer(
             &[system_instruction::create_account(
                 &payer.pubkey(),
                 &order_keypair.pubkey(),
-                Rent::default().minimum_balance(OrderAccount::LEN),
-                OrderAccount::LEN.try_into().unwrap(),
+                Rent::default().minimum_balance(order_account_size),
+                order_account_size as u64,
                 &program_id,
             )],
             Some(&payer.pubkey()),
@@ -345,13 +319,31 @@ mod test {
                 token_keypair.pubkey(),
                 order_keypair.pubkey(),
                 merchant_keypair.pubkey(),
-                2000,
-                String::from("#123").into_bytes(),
+                amount,
+                order_id
             )],
             Some(&payer.pubkey()),
         );
-        println!("SIZE >> {:?} ", size_of_val(&String::from("#123").into_bytes()));
         transaction.sign(&[&payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+
+        // test contents of order account
+        let order_account = banks_client.get_account(order_keypair.pubkey()).await;
+        let order_account = match order_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        let order_data = OrderAccount::unpack(&order_account.data);
+        let order_data = match order_data {
+            Ok(data) => data,
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(true, order_data.is_initialized());
+        assert_eq!(OrderStatus::Paid as u8, order_data.status);
+        assert_eq!(2000, order_data.expected_amount);
+        assert_eq!(String::from("1337"), order_data.order_id);
     }
 }
