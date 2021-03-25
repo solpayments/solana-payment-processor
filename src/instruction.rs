@@ -94,7 +94,12 @@ mod test {
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         assert_matches::*,
-        solana_program::{hash::Hash, program_pack::{IsInitialized, Pack}, rent::Rent, system_instruction},
+        solana_program::{
+            hash::Hash,
+            program_pack::{IsInitialized, Pack},
+            rent::Rent,
+            system_instruction,
+        },
         solana_program_test::*,
         solana_sdk::{
             signature::{Keypair, Signer},
@@ -315,7 +320,7 @@ mod test {
                 order_keypair.pubkey(),
                 merchant_keypair.pubkey(),
                 amount,
-                order_id
+                order_id,
             )],
             Some(&payer.pubkey()),
         );
@@ -338,7 +343,21 @@ mod test {
         };
         assert_eq!(true, order_data.is_initialized());
         assert_eq!(OrderStatus::Paid as u8, order_data.status);
+        assert_eq!(
+            merchant_keypair.pubkey().to_bytes(),
+            order_data.merchant_pubkey
+        );
+        assert_eq!(
+            merchant_keypair.pubkey().to_bytes(),
+            order_data.mint_pubkey
+        );
+        assert_eq!(
+            payer.pubkey().to_bytes(),
+            order_data.payer_pubkey
+        );
         assert_eq!(2000, order_data.expected_amount);
+        assert_eq!(0, order_data.paid_amount);
+        assert_eq!(0, order_data.fee_amount);
         assert_eq!(String::from("1337"), order_data.order_id);
     }
 }
