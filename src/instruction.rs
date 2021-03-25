@@ -14,7 +14,8 @@ pub enum PaymentProcessorInstruction {
     ///
     /// 0. `[signer]` The account of the person initializing the merchant account
     /// 1. `[writable]` The merchant account.  Owned by this program
-    /// 2. `[]` The rent sysvar
+    /// 2. `[]` System program
+    /// 3. `[]` The rent sysvar
     RegisterMerchant,
     /// Express Checkout - create order and pay for it in one transaction
     ///
@@ -51,6 +52,7 @@ pub fn register_merchant(
         accounts: vec![
             AccountMeta::new(signer_pubkey, true),
             AccountMeta::new(merchant_acc_pubkey, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
         data: PaymentProcessorInstruction::RegisterMerchant

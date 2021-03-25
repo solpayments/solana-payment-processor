@@ -9,13 +9,20 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
+    program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
+    system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
 use spl_token;
-use spl_token::state::{Account as TokenAccount, AccountState, Mint};
+use spl_token::{
+    instruction::{initialize_account},
+    state::{Account as TokenAccount, AccountState, Mint},
+};
+use solana_program::program_pack::Pack;
+use std::convert::TryInto;
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -45,6 +52,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
 
     let signer_info = next_account_info(account_info_iter)?;
     let merchant_info = next_account_info(account_info_iter)?;
+    let system_sysvar_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
 
@@ -57,6 +65,31 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
     if *merchant_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
+
+    let (pda, nonce) = Pubkey::find_program_address(&[b"payment-processor"], program_id);
+    let merchant_seeded = Pubkey::create_with_seed(
+        signer_info.key,
+        "payment-processor",
+        program_id
+    ).unwrap();
+    let create_account_ix = system_instruction::create_account_with_seed(
+        signer_info.key,
+        &merchant_seeded,
+        signer_info.key,
+        "payment-processor",
+        Rent::default().minimum_balance(MerchantAccount::LEN),
+        MerchantAccount::LEN.try_into().unwrap(),
+        program_id
+    );
+    msg!("Creating merchant account onchain...");
+    invoke(
+        &create_account_ix,
+        &[
+            signer_info.clone(),
+            signer_info.clone(),
+            system_sysvar_info.clone(),
+        ],
+    )?;
 
     // ensure merchant account is rent exempt
     if !rent.is_exempt(merchant_info.lamports(), MerchantAccount::LEN) {
@@ -118,6 +151,7 @@ pub fn process_express_checkout(
     if *order_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
+    let (pda, nonce) = Pubkey::find_program_address(&[b"payment-processor"], program_id);
     // get the order account
     let mut order_account = order_acc_info.try_borrow_mut_data()?;
     msg!("Saving order information...");
