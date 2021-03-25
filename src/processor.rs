@@ -3,14 +3,14 @@ use crate::{
     instruction::PaymentProcessorInstruction,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
 };
-use borsh::{BorshDeserialize};
+use borsh::BorshDeserialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program_error::ProgramError,
-    program_pack::{IsInitialized},
+    program_pack::IsInitialized,
     pubkey::Pubkey,
     sysvar::{rent::Rent, Sysvar},
 };
@@ -33,12 +33,7 @@ impl PaymentProcessorInstruction {
             }
             PaymentProcessorInstruction::ExpressCheckout { amount, order_id } => {
                 msg!("Instruction: ExpressCheckout");
-                process_express_checkout(
-                    program_id,
-                    accounts,
-                    amount,
-                    order_id,
-                )
+                process_express_checkout(program_id, accounts, amount, order_id)
             }
             _ => Err(ProgramError::InvalidInstructionData),
         }
