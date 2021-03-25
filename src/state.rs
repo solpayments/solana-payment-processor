@@ -1,22 +1,25 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{
+    BorshDeserialize, BorshSchema, BorshSerialize,
+};
 use solana_program::{
     clock::UnixTimestamp,
-    program_error::ProgramError,
     program_pack::{IsInitialized, Sealed},
 };
+use std::mem::size_of;
 
 pub type PublicKey = [u8; 32];
+
 pub trait Serdes: Sized + BorshSerialize + BorshDeserialize {
     fn pack(&self, dst: &mut [u8]) {
         let encoded = self.try_to_vec().unwrap();
         dst[..encoded.len()].copy_from_slice(&encoded);
     }
-    fn unpack(src: &[u8]) -> Result<Self, ProgramError> {
-        Self::try_from_slice(src).map_err(|_| ProgramError::InvalidAccountData)
+    fn unpack(src: &[u8]) -> Result<Self, std::io::Error> {
+        Self::try_from_slice(src)
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct MerchantAccount {
     pub is_initialized: bool,
     pub merchant_pubkey: PublicKey,
@@ -29,7 +32,7 @@ pub enum OrderStatus {
     Paid = 2,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct OrderAccount {
     pub status: u8,
     pub created: UnixTimestamp,
@@ -40,7 +43,7 @@ pub struct OrderAccount {
     pub expected_amount: u64,
     pub paid_amount: u64,
     pub fee_amount: u64,
-    pub order_id: Vec<u8>,  // size of this turns out to be 4
+    pub order_id: String,
 }
 
 // impl for MerchantAccount
@@ -70,5 +73,13 @@ impl IsInitialized for OrderAccount {
 }
 
 impl OrderAccount {
-    pub const LEN: usize = 141;
+    pub const MIN_LEN: usize = size_of::<u8>()
+        + size_of::<UnixTimestamp>()
+        + size_of::<UnixTimestamp>()
+        + size_of::<PublicKey>()
+        + size_of::<PublicKey>()
+        + size_of::<PublicKey>()
+        + size_of::<u64>()
+        + size_of::<u64>()
+        + size_of::<u64>();
 }
