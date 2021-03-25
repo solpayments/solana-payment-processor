@@ -90,7 +90,6 @@ pub fn express_checkout(
 mod test {
     use {
         super::*,
-        // crate::processor::process_instruction,
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         assert_matches::*,
@@ -347,14 +346,8 @@ mod test {
             merchant_keypair.pubkey().to_bytes(),
             order_data.merchant_pubkey
         );
-        assert_eq!(
-            merchant_keypair.pubkey().to_bytes(),
-            order_data.mint_pubkey
-        );
-        assert_eq!(
-            payer.pubkey().to_bytes(),
-            order_data.payer_pubkey
-        );
+        assert_eq!(merchant_keypair.pubkey().to_bytes(), order_data.mint_pubkey);
+        assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
         assert_eq!(2000, order_data.expected_amount);
         assert_eq!(0, order_data.paid_amount);
         assert_eq!(0, order_data.fee_amount);
