@@ -3,6 +3,7 @@ use crate::{
     instruction::PaymentProcessorInstruction,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
 };
+use borsh::{BorshDeserialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -16,32 +17,30 @@ use solana_program::{
 use spl_token;
 use spl_token::state::{Account as TokenAccount, AccountState, Mint};
 
-/// Processes an instruction
-pub fn process_instruction(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    let instruction = PaymentProcessorInstruction::unpack(instruction_data)?;
-
-    match instruction {
-        PaymentProcessorInstruction::RegisterMerchant => {
-            msg!("Instruction: RegisterMerchant");
-            process_register_merchant(program_id, accounts)
-        }
-        PaymentProcessorInstruction::ExpressCheckout {
-            amount,
-            // merchant_token_pubkey,
-            order_id,
-        } => {
-            msg!("Instruction: ExpressCheckout");
-            process_express_checkout(
-                program_id,
-                accounts,
-                amount,
-                // merchant_token_pubkey,
-                order_id,
-            )
+/// Processes the instruction
+impl PaymentProcessorInstruction {
+    pub fn process(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        instruction_data: &[u8],
+    ) -> ProgramResult {
+        let instruction = PaymentProcessorInstruction::try_from_slice(&instruction_data)
+            .map_err(|_| ProgramError::InvalidInstructionData)?;
+        match instruction {
+            PaymentProcessorInstruction::RegisterMerchant => {
+                msg!("Instruction: RegisterMerchant");
+                process_register_merchant(program_id, accounts)
+            }
+            PaymentProcessorInstruction::ExpressCheckout { amount, order_id } => {
+                msg!("Instruction: ExpressCheckout");
+                process_express_checkout(
+                    program_id,
+                    accounts,
+                    amount,
+                    order_id,
+                )
+            }
+            _ => Err(ProgramError::InvalidInstructionData),
         }
     }
 }
@@ -88,7 +87,7 @@ pub fn process_express_checkout(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     amount: u64,
-    order_id: Vec<u8>,
+    order_id: String,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -124,28 +123,23 @@ pub fn process_express_checkout(
     if *order_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
-    // ensure order account is rent exempt
-    if !rent.is_exempt(order_acc_info.lamports(), OrderAccount::LEN) {
-        return Err(PaymentProcessorError::NotRentExempt.into());
-    }
     // get the order account
-    let mut order_account = OrderAccount::unpack(&order_acc_info.data.borrow())?;
-    if order_account.is_initialized() {
-        return Err(ProgramError::AccountAlreadyInitialized);
-    }
-
+    let mut order_account = order_acc_info.try_borrow_mut_data()?;
     msg!("Saving order information...");
-    order_account.status = OrderStatus::Paid as u8;
-    order_account.created = *timestamp;
-    order_account.modified = *timestamp;
-    order_account.merchant_pubkey = merchant_acc_info.key.to_bytes();
-    order_account.mint_pubkey = merchant_acc_info.key.to_bytes();
-    order_account.payer_pubkey = signer_info.key.to_bytes();
-    order_account.expected_amount = amount;
-    order_account.paid_amount = 0;
-    order_account.fee_amount = 0;
-    order_account.order_id = order_id;
-    OrderAccount::pack(&order_account, &mut order_acc_info.data.borrow_mut());
+    let order = OrderAccount {
+        status: OrderStatus::Paid as u8,
+        created: *timestamp,
+        modified: *timestamp,
+        merchant_pubkey: merchant_acc_info.key.to_bytes(),
+        mint_pubkey: merchant_acc_info.key.to_bytes(),
+        payer_pubkey: signer_info.key.to_bytes(),
+        expected_amount: amount,
+        paid_amount: 0,
+        fee_amount: 0,
+        order_id,
+    };
+
+    order.pack(&mut order_account);
 
     Ok(())
 }
