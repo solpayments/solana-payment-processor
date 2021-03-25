@@ -1,14 +1,10 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
-    program_error::ProgramError,
     pubkey::Pubkey,
     sysvar,
 };
 use spl_token::{self};
-use std::convert::TryInto;
-
-use crate::error::PaymentProcessorError::InvalidInstruction;
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
 pub enum PaymentProcessorInstruction {
@@ -109,7 +105,6 @@ mod test {
             state::{Account as TokenAccount, Mint},
         },
         std::convert::TryInto,
-        std::mem::size_of_val,
         std::str::FromStr,
     };
 
