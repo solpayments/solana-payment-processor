@@ -122,6 +122,7 @@ pub fn process_express_checkout(
         return Err(ProgramError::IncorrectProgramId);
     }
     // get the order account
+    // TODO: ensure this account is not already initialized
     let mut order_account_data = order_acc_info.try_borrow_mut_data()?;
     msg!("Saving order information...");
     let order = OrderAccount {
