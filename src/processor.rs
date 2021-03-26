@@ -2,6 +2,7 @@ use crate::{
     error::PaymentProcessorError,
     instruction::PaymentProcessorInstruction,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
+    utils::get_amounts,
 };
 use borsh::BorshDeserialize;
 use solana_program::program_pack::Pack;
@@ -17,8 +18,6 @@ use solana_program::{
 };
 use spl_token;
 use spl_token::state::{Account as TokenAccount, AccountState, Mint};
-
-const FEE: u64 = 3;
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -121,13 +120,10 @@ pub fn process_express_checkout(
     if *order_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
-
     // Get mint details
     let payer_token_account_data = TokenAccount::unpack(&payer_token_info.data.borrow())?;
-
-    // calculate fees and such
-    let fee_amount: u128 = (amount as u128 * FEE as u128) / 1000;
-    let take_home_amount = amount - fee_amount as u64;
+    // Get fee and take home amount
+    let (take_home_amount, fee_amount) = get_amounts(amount);
 
     // get the order account
     // TODO: ensure this account is not already initialized
