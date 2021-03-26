@@ -4,6 +4,7 @@ use crate::{
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
 };
 use borsh::BorshDeserialize;
+use solana_program::program_pack::Pack;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -114,6 +115,8 @@ pub fn process_express_checkout(
     if *merchant_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
+    // Get mint details
+    let payer_token_account = TokenAccount::unpack(&payer_token_info.data.borrow())?;
     // ensure order account is owned by this program
     if *order_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
@@ -126,7 +129,7 @@ pub fn process_express_checkout(
         created: *timestamp,
         modified: *timestamp,
         merchant_pubkey: merchant_acc_info.key.to_bytes(),
-        mint_pubkey: merchant_acc_info.key.to_bytes(),
+        mint_pubkey: payer_token_account.mint.to_bytes(),
         payer_pubkey: signer_info.key.to_bytes(),
         expected_amount: amount,
         paid_amount: 0,
