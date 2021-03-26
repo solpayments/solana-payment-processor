@@ -25,8 +25,9 @@ pub enum PaymentProcessorInstruction {
     /// 2. `[writable]` The order account.  Owned by this program
     /// 3. `[writable]` The merchant account.  Owned by this program
     /// 4. `[]` The token program
-    /// 5. `[]` The clock sysvar
-    /// 6. `[]` The rent sysvar
+    /// 5. `[]` The System program
+    /// 6. `[]` The clock sysvar
+    /// 7. `[]` The rent sysvar
     ExpressCheckout {
         #[allow(dead_code)] // not dead code..
         amount: u64,
@@ -65,7 +66,9 @@ pub fn express_checkout(
     signer_pubkey: Pubkey,
     payer_token_acc_pubkey: Pubkey,
     order_acc_pubkey: Pubkey,
+    order_token_acc_pubkey: Pubkey,
     merchant_acc_pubkey: Pubkey,
+    mint_pubkey: Pubkey,
     amount: u64,
     order_id: String,
 ) -> Instruction {
@@ -75,8 +78,11 @@ pub fn express_checkout(
             AccountMeta::new(signer_pubkey, true),
             AccountMeta::new(payer_token_acc_pubkey, false),
             AccountMeta::new(order_acc_pubkey, false),
+            AccountMeta::new(order_token_acc_pubkey, false),
             AccountMeta::new_readonly(merchant_acc_pubkey, false),
+            AccountMeta::new_readonly(mint_pubkey, false),
             AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
@@ -104,6 +110,7 @@ mod test {
             signature::{Keypair, Signer},
             transaction::Transaction,
         },
+        spl_associated_token_account,
         spl_token::{
             instruction::{initialize_account, initialize_mint},
             state::{Account as TokenAccount, Mint},
@@ -296,7 +303,7 @@ mod test {
                 .await,
             Ok(())
         );
-        // create and initialize token
+        // create and initialize token account
         assert_matches!(
             banks_client
                 .process_transaction(create_token_account_transaction(
@@ -310,6 +317,10 @@ mod test {
                 .await,
             Ok(())
         );
+        let associated_order_token_address = spl_associated_token_account::get_associated_token_address(
+            &order_keypair.pubkey(),
+            &mint_keypair.pubkey(),
+        );
         // then call express checkout ix
         let mut transaction = Transaction::new_with_payer(
             &[express_checkout(
@@ -317,7 +328,9 @@ mod test {
                 payer.pubkey(),
                 token_keypair.pubkey(),
                 order_keypair.pubkey(),
+                associated_order_token_address,
                 merchant_keypair.pubkey(),
+                mint_keypair.pubkey(),
                 amount,
                 order_id,
             )],
@@ -351,7 +364,7 @@ mod test {
         assert_eq!(2000, order_data.expected_amount);
         assert_eq!(2000, order_data.paid_amount);
         assert_eq!(1994, order_data.take_home_amount);
-        assert_eq!(6, order_data.fee_amount);
+        assert_eq!(6 + 1, order_data.fee_amount);
         assert_eq!(String::from("1337"), order_data.order_id);
     }
 }

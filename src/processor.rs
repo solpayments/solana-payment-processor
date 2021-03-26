@@ -11,6 +11,7 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
+    program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
@@ -18,6 +19,7 @@ use solana_program::{
 };
 use spl_token;
 use spl_token::state::{Account as TokenAccount, AccountState, Mint};
+use spl_associated_token_account;
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -91,8 +93,11 @@ pub fn process_express_checkout(
     let signer_info = next_account_info(account_info_iter)?;
     let payer_token_info = next_account_info(account_info_iter)?;
     let order_acc_info = next_account_info(account_info_iter)?;
+    let order_token_acc_info = next_account_info(account_info_iter)?;
     let merchant_acc_info = next_account_info(account_info_iter)?;
+    let mint_acc_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
+    let system_program_info = next_account_info(account_info_iter)?;
     let clock_sysvar_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
 
@@ -120,8 +125,40 @@ pub fn process_express_checkout(
     if *order_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
-    // Get mint details
+    // get pda and nonce
+    // let (pda, nonce) = Pubkey::find_program_address(&[b"loan"], program_id);
+    // Get mint details and verify that they match token account
     let payer_token_account_data = TokenAccount::unpack(&payer_token_info.data.borrow())?;
+    if mint_acc_info.key != &payer_token_account_data.mint {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // let x = spl_token::instruction::initialize_account(
+    //     token_program_info.key,
+    //     &pda,
+    //     &payer_token_account_data.mint,
+    //     program_id
+    // );
+    // let xx = spl_associated_token_account::get_associated_token_address(
+    //     order_acc_info.key,
+    //     &payer_token_account_data.mint
+    // );
+    let create_order_token_acc_ix = spl_associated_token_account::create_associated_token_account(
+        signer_info.key,
+        order_acc_info.key,
+        &payer_token_account_data.mint
+    );
+    invoke(
+        &create_order_token_acc_ix,
+        &[
+            signer_info.clone(),
+            order_token_acc_info.clone(),
+            order_acc_info.clone(),
+            mint_acc_info.clone(),
+            system_program_info.clone(),
+            token_program_info.clone(),
+            rent_sysvar_info.clone(),
+        ],
+    )?;
     // Get fee and take home amount
     let (take_home_amount, fee_amount) = get_amounts(amount);
 
