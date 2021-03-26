@@ -18,6 +18,8 @@ use solana_program::{
 use spl_token;
 use spl_token::state::{Account as TokenAccount, AccountState, Mint};
 
+const FEE: u64 = 3;
+
 /// Processes the instruction
 impl PaymentProcessorInstruction {
     pub fn process(
@@ -115,12 +117,18 @@ pub fn process_express_checkout(
     if *merchant_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
-    // Get mint details
-    let payer_token_account_data = TokenAccount::unpack(&payer_token_info.data.borrow())?;
     // ensure order account is owned by this program
     if *order_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
+
+    // Get mint details
+    let payer_token_account_data = TokenAccount::unpack(&payer_token_info.data.borrow())?;
+
+    // calculate fees and such
+    let fee_amount: u128 = (amount as u128 * FEE as u128) / 1000;
+    let take_home_amount = amount - fee_amount as u64;
+
     // get the order account
     // TODO: ensure this account is not already initialized
     let mut order_account_data = order_acc_info.try_borrow_mut_data()?;
@@ -133,8 +141,9 @@ pub fn process_express_checkout(
         mint_pubkey: payer_token_account_data.mint.to_bytes(),
         payer_pubkey: signer_info.key.to_bytes(),
         expected_amount: amount,
-        paid_amount: 0,
-        fee_amount: 0,
+        paid_amount: amount,
+        take_home_amount,
+        fee_amount: fee_amount as u64,
         order_id,
     };
 
