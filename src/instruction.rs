@@ -349,8 +349,9 @@ mod test {
         assert_eq!(mint_keypair.pubkey().to_bytes(), order_data.mint_pubkey);
         assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
         assert_eq!(2000, order_data.expected_amount);
-        assert_eq!(0, order_data.paid_amount);
-        assert_eq!(0, order_data.fee_amount);
+        assert_eq!(2000, order_data.paid_amount);
+        assert_eq!(1994, order_data.take_home_amount);
+        assert_eq!(6, order_data.fee_amount);
         assert_eq!(String::from("1337"), order_data.order_id);
     }
 }
