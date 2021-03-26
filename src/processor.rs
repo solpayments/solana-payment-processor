@@ -4,6 +4,7 @@ use crate::{
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
 };
 use borsh::BorshDeserialize;
+use solana_program::program_pack::Pack;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -18,10 +19,9 @@ use solana_program::{
 };
 use spl_token;
 use spl_token::{
-    instruction::{initialize_account},
+    instruction::initialize_account,
     state::{Account as TokenAccount, AccountState, Mint},
 };
-use solana_program::program_pack::Pack;
 use std::convert::TryInto;
 
 /// Processes the instruction
@@ -52,6 +52,8 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
 
     let signer_info = next_account_info(account_info_iter)?;
     let merchant_info = next_account_info(account_info_iter)?;
+    // test getting seeded pubkey
+    let merchant_seeded_info = next_account_info(account_info_iter)?;
     let system_sysvar_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
@@ -66,26 +68,28 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (pda, nonce) = Pubkey::find_program_address(&[b"payment-processor"], program_id);
-    let merchant_seeded = Pubkey::create_with_seed(
-        signer_info.key,
-        "payment-processor",
-        program_id
-    ).unwrap();
+    // test that seeded pubkey is correct
+    let address_with_seed =
+        Pubkey::create_with_seed(signer_info.key, "payment-processor", program_id)?;
+    assert_eq!(*merchant_seeded_info.key, address_with_seed);
+    // try create seeded account
     let create_account_ix = system_instruction::create_account_with_seed(
         signer_info.key,
-        &merchant_seeded,
+        merchant_seeded_info.key,
         signer_info.key,
         "payment-processor",
         Rent::default().minimum_balance(MerchantAccount::LEN),
         MerchantAccount::LEN.try_into().unwrap(),
-        program_id
+        program_id,
     );
+    println!("signer_info.key: {:?}", signer_info.key);
+    println!("2 merchant_seeded_info.key: {:?}", merchant_seeded_info.key);
     msg!("Creating merchant account onchain...");
     invoke(
         &create_account_ix,
         &[
             signer_info.clone(),
+            merchant_seeded_info.clone(),
             signer_info.clone(),
             system_sysvar_info.clone(),
         ],

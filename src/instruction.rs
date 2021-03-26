@@ -47,11 +47,18 @@ pub fn register_merchant(
     signer_pubkey: Pubkey,
     merchant_acc_pubkey: Pubkey,
 ) -> Instruction {
+    let merchant_seeded = Pubkey::create_with_seed(
+        &signer_pubkey,
+        "payment-processor",
+        &program_id
+    ).unwrap();
+
     Instruction {
         program_id,
         accounts: vec![
             AccountMeta::new(signer_pubkey, true),
             AccountMeta::new(merchant_acc_pubkey, false),
+            AccountMeta::new(merchant_seeded, false), // test passing in seeded pubkey
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
