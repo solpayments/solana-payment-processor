@@ -116,20 +116,20 @@ pub fn process_express_checkout(
         return Err(ProgramError::IncorrectProgramId);
     }
     // Get mint details
-    let payer_token_account = TokenAccount::unpack(&payer_token_info.data.borrow())?;
+    let payer_token_account_data = TokenAccount::unpack(&payer_token_info.data.borrow())?;
     // ensure order account is owned by this program
     if *order_acc_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
     // get the order account
-    let mut order_account = order_acc_info.try_borrow_mut_data()?;
+    let mut order_account_data = order_acc_info.try_borrow_mut_data()?;
     msg!("Saving order information...");
     let order = OrderAccount {
         status: OrderStatus::Paid as u8,
         created: *timestamp,
         modified: *timestamp,
         merchant_pubkey: merchant_acc_info.key.to_bytes(),
-        mint_pubkey: payer_token_account.mint.to_bytes(),
+        mint_pubkey: payer_token_account_data.mint.to_bytes(),
         payer_pubkey: signer_info.key.to_bytes(),
         expected_amount: amount,
         paid_amount: 0,
@@ -137,7 +137,7 @@ pub fn process_express_checkout(
         order_id,
     };
 
-    order.pack(&mut order_account);
+    order.pack(&mut order_account_data);
 
     Ok(())
 }
