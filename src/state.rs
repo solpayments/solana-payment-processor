@@ -42,6 +42,7 @@ pub struct OrderAccount {
     pub payer_pubkey: PublicKey,
     pub expected_amount: u64,
     pub paid_amount: u64,
+    pub take_home_amount: u64,
     pub fee_amount: u64,
     pub order_id: String,
 }
@@ -79,6 +80,7 @@ impl OrderAccount {
         + size_of::<PublicKey>()
         + size_of::<PublicKey>()
         + size_of::<PublicKey>()
+        + size_of::<u64>()
         + size_of::<u64>()
         + size_of::<u64>()
         + size_of::<u64>();
