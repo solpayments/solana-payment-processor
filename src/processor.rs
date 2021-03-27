@@ -26,7 +26,7 @@ use spl_token::{
 };
 use std::convert::TryInto;
 
-pub const PAYMENT_PROCESSOR: &str = "payment-processor";
+pub const MERCHANT: &str = "payment-processor";
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -67,7 +67,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
 
     // test that merchant account pubkey is correct
     let address_with_seed =
-        Pubkey::create_with_seed(signer_info.key, PAYMENT_PROCESSOR, program_id)?;
+        Pubkey::create_with_seed(signer_info.key, MERCHANT, program_id)?;
     if *merchant_info.key != address_with_seed {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -76,7 +76,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
         signer_info.key,
         merchant_info.key,
         signer_info.key,
-        PAYMENT_PROCESSOR,
+        MERCHANT,
         Rent::default().minimum_balance(MerchantAccount::LEN),
         MerchantAccount::LEN.try_into().unwrap(),
         program_id,
@@ -118,100 +118,100 @@ pub fn process_express_checkout(
     amount: u64,
     order_id: String,
 ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
+    // let account_info_iter = &mut accounts.iter();
 
-    let signer_info = next_account_info(account_info_iter)?;
-    let payer_token_info = next_account_info(account_info_iter)?;
-    let order_acc_info = next_account_info(account_info_iter)?;
-    let order_token_acc_info = next_account_info(account_info_iter)?;
-    let merchant_acc_info = next_account_info(account_info_iter)?;
-    let mint_acc_info = next_account_info(account_info_iter)?;
-    let token_program_info = next_account_info(account_info_iter)?;
-    let system_program_info = next_account_info(account_info_iter)?;
-    let clock_sysvar_info = next_account_info(account_info_iter)?;
-    let rent_sysvar_info = next_account_info(account_info_iter)?;
+    // let signer_info = next_account_info(account_info_iter)?;
+    // let payer_token_info = next_account_info(account_info_iter)?;
+    // let order_acc_info = next_account_info(account_info_iter)?;
+    // let order_token_acc_info = next_account_info(account_info_iter)?;
+    // let merchant_acc_info = next_account_info(account_info_iter)?;
+    // let mint_acc_info = next_account_info(account_info_iter)?;
+    // let token_program_info = next_account_info(account_info_iter)?;
+    // let system_program_info = next_account_info(account_info_iter)?;
+    // let clock_sysvar_info = next_account_info(account_info_iter)?;
+    // let rent_sysvar_info = next_account_info(account_info_iter)?;
 
-    let rent = &Rent::from_account_info(rent_sysvar_info)?;
-    let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
+    // let rent = &Rent::from_account_info(rent_sysvar_info)?;
+    // let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
 
-    // ensure signer can sign
-    if !signer_info.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    // get the merchant account
-    let merchant_account = MerchantAccount::unpack(&merchant_acc_info.data.borrow())?;
-    if !merchant_account.is_initialized() {
-        return Err(ProgramError::UninitializedAccount);
-    }
-    // ensure payer token account is owned by token program
-    if *payer_token_info.owner != spl_token::id() {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    // ensure merchant account is owned by this program
-    if *merchant_acc_info.owner != *program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    // ensure order account is owned by this program
-    if *order_acc_info.owner != *program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    // get pda and nonce
-    // let (pda, nonce) = Pubkey::find_program_address(&[b"loan"], program_id);
-    // Get mint details and verify that they match token account
-    let payer_token_account_data = TokenAccount::unpack(&payer_token_info.data.borrow())?;
-    if mint_acc_info.key != &payer_token_account_data.mint {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    // let x = spl_token::instruction::initialize_account(
-    //     token_program_info.key,
-    //     &pda,
-    //     &payer_token_account_data.mint,
-    //     program_id
-    // );
-    // let xx = spl_associated_token_account::get_associated_token_address(
+    // // ensure signer can sign
+    // if !signer_info.is_signer {
+    //     return Err(ProgramError::MissingRequiredSignature);
+    // }
+    // // get the merchant account
+    // let merchant_account = MerchantAccount::unpack(&merchant_acc_info.data.borrow())?;
+    // if !merchant_account.is_initialized() {
+    //     return Err(ProgramError::UninitializedAccount);
+    // }
+    // // ensure payer token account is owned by token program
+    // if *payer_token_info.owner != spl_token::id() {
+    //     return Err(ProgramError::IncorrectProgramId);
+    // }
+    // // ensure merchant account is owned by this program
+    // if *merchant_acc_info.owner != *program_id {
+    //     return Err(ProgramError::IncorrectProgramId);
+    // }
+    // // ensure order account is owned by this program
+    // if *order_acc_info.owner != *program_id {
+    //     return Err(ProgramError::IncorrectProgramId);
+    // }
+    // // get pda and nonce
+    // // let (pda, nonce) = Pubkey::find_program_address(&[b"loan"], program_id);
+    // // Get mint details and verify that they match token account
+    // let payer_token_account_data = TokenAccount::unpack(&payer_token_info.data.borrow())?;
+    // if mint_acc_info.key != &payer_token_account_data.mint {
+    //     return Err(ProgramError::IncorrectProgramId);
+    // }
+    // // let x = spl_token::instruction::initialize_account(
+    // //     token_program_info.key,
+    // //     &pda,
+    // //     &payer_token_account_data.mint,
+    // //     program_id
+    // // );
+    // // let xx = spl_associated_token_account::get_associated_token_address(
+    // //     order_acc_info.key,
+    // //     &payer_token_account_data.mint
+    // // );
+    // let create_order_token_acc_ix = spl_associated_token_account::create_associated_token_account(
+    //     signer_info.key,
     //     order_acc_info.key,
     //     &payer_token_account_data.mint
     // );
-    let create_order_token_acc_ix = spl_associated_token_account::create_associated_token_account(
-        signer_info.key,
-        order_acc_info.key,
-        &payer_token_account_data.mint
-    );
-    invoke(
-        &create_order_token_acc_ix,
-        &[
-            signer_info.clone(),
-            order_token_acc_info.clone(),
-            order_acc_info.clone(),
-            mint_acc_info.clone(),
-            system_program_info.clone(),
-            token_program_info.clone(),
-            rent_sysvar_info.clone(),
-        ],
-    )?;
-    // Get fee and take home amount
-    let (take_home_amount, fee_amount) = get_amounts(amount);
+    // invoke(
+    //     &create_order_token_acc_ix,
+    //     &[
+    //         signer_info.clone(),
+    //         order_token_acc_info.clone(),
+    //         order_acc_info.clone(),
+    //         mint_acc_info.clone(),
+    //         system_program_info.clone(),
+    //         token_program_info.clone(),
+    //         rent_sysvar_info.clone(),
+    //     ],
+    // )?;
+    // // Get fee and take home amount
+    // let (take_home_amount, fee_amount) = get_amounts(amount);
 
-    let (pda, nonce) = Pubkey::find_program_address(&[b"payment-processor"], program_id);
-    // get the order account
-    // TODO: ensure this account is not already initialized
-    let mut order_account_data = order_acc_info.try_borrow_mut_data()?;
-    msg!("Saving order information...");
-    let order = OrderAccount {
-        status: OrderStatus::Paid as u8,
-        created: *timestamp,
-        modified: *timestamp,
-        merchant_pubkey: merchant_acc_info.key.to_bytes(),
-        mint_pubkey: payer_token_account_data.mint.to_bytes(),
-        payer_pubkey: signer_info.key.to_bytes(),
-        expected_amount: amount,
-        paid_amount: amount,
-        take_home_amount,
-        fee_amount: fee_amount as u64,
-        order_id,
-    };
+    // let (pda, nonce) = Pubkey::find_program_address(&[b"payment-processor"], program_id);
+    // // get the order account
+    // // TODO: ensure this account is not already initialized
+    // let mut order_account_data = order_acc_info.try_borrow_mut_data()?;
+    // msg!("Saving order information...");
+    // let order = OrderAccount {
+    //     status: OrderStatus::Paid as u8,
+    //     created: *timestamp,
+    //     modified: *timestamp,
+    //     merchant_pubkey: merchant_acc_info.key.to_bytes(),
+    //     mint_pubkey: payer_token_account_data.mint.to_bytes(),
+    //     payer_pubkey: signer_info.key.to_bytes(),
+    //     expected_amount: amount,
+    //     paid_amount: amount,
+    //     take_home_amount,
+    //     fee_amount: fee_amount as u64,
+    //     order_id,
+    // };
 
-    order.pack(&mut order_account_data);
+    // order.pack(&mut order_account_data);
 
     Ok(())
 }
