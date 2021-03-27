@@ -82,8 +82,8 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
         MerchantAccount::LEN.try_into().unwrap(),
         program_id,
     );
-    println!("signer_info.key: {:?}", signer_info.key);
-    println!("2 merchant_seeded_info.key: {:?}", merchant_seeded_info.key);
+    // println!("signer_info.key: {:?}", signer_info.key);
+    // println!("2 merchant_seeded_info.key: {:?}", merchant_seeded_info.key);
     msg!("Creating merchant account onchain...");
     invoke(
         &create_account_ix,

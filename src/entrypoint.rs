@@ -1,4 +1,3 @@
-#![cfg(feature = "program")]
 #![cfg(not(feature = "no-entrypoint"))]
 
 use solana_program::{
@@ -11,13 +10,7 @@ fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    msg!(
-        "process_instruction: {}: {} accounts, data={:?}",
-        program_id,
-        accounts.len(),
-        instruction_data
-    );
-    Ok(())
+    crate::instruction::PaymentProcessorInstruction::process(program_id, accounts, instruction_data)
 }
 
 #[cfg(test)]

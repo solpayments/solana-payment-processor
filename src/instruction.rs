@@ -183,7 +183,7 @@ mod test {
         let merchant_keypair = Keypair::new();
 
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "solana_payment_processor",
+            "sol_payment_processor",
             program_id,
             processor!(PaymentProcessorInstruction::process),
         )
