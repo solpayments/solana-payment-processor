@@ -11,9 +11,6 @@ pub enum PaymentProcessorError {
     /// Invalid instruction
     #[error("Invalid Instruction")]
     InvalidInstruction,
-    /// Not Rent Exempt
-    #[error("Not Rent Exempt")]
-    NotRentExempt,
 }
 
 impl From<PaymentProcessorError> for ProgramError {
@@ -35,7 +32,6 @@ impl PrintProgramError for PaymentProcessorError {
     {
         match self {
             PaymentProcessorError::InvalidInstruction => msg!("Error: Invalid Instruction"),
-            PaymentProcessorError::NotRentExempt => msg!("Error: Not Rent Exempt"),
         }
     }
 }
