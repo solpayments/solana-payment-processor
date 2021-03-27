@@ -66,11 +66,10 @@ pub fn register_merchant(
 pub fn express_checkout(
     program_id: Pubkey,
     signer_pubkey: Pubkey,
-    // payer_token_acc_pubkey: Pubkey,
     order_account_pubkey: Pubkey,
-    // order_token_acc_pubkey: Pubkey,
     merchant_account_pubkey: Pubkey,
-    // mint_pubkey: Pubkey,
+    seller_token_account_pubkey: Pubkey,
+    buyer_token_account_pubkey: Pubkey,
     amount: u64,
     order_id: String,
 ) -> Instruction {
@@ -78,11 +77,10 @@ pub fn express_checkout(
         program_id,
         accounts: vec![
             AccountMeta::new(signer_pubkey, true),
-            // AccountMeta::new(payer_token_acc_pubkey, false),
             AccountMeta::new(order_account_pubkey, false),
-            // AccountMeta::new(order_token_acc_pubkey, false),
             AccountMeta::new_readonly(merchant_account_pubkey, false),
-            // AccountMeta::new_readonly(mint_pubkey, false),
+            AccountMeta::new(seller_token_account_pubkey, false),
+            AccountMeta::new(buyer_token_account_pubkey, false),
             // AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
             // AccountMeta::new_readonly(sysvar::clock::id(), false),
@@ -220,6 +218,8 @@ mod test {
         amount: u64,
         program_id: &Pubkey,
         merchant_account_pubkey: &Pubkey,
+        seller_token_pubkey: &Pubkey,
+        buyer_token_pubkey: &Pubkey,
         banks_client: &mut BanksClient,
         payer: Keypair,
         recent_blockhash: Hash,
@@ -241,6 +241,8 @@ mod test {
                 payer.pubkey(),
                 order_acc_pubkey,
                 *merchant_account_pubkey,
+                *seller_token_pubkey,
+                *buyer_token_pubkey,
                 amount,
                 (&order_id).to_string(),
             )],
@@ -291,11 +293,58 @@ mod test {
         let payer = merchant_result.3;
         let recent_blockhash = merchant_result.4;
 
+        // next create token account for test
+        let mint_keypair = Keypair::new();
+        let seller_token_keypair = Keypair::new();
+        let buyer_token_keypair = Keypair::new();
+        // create and initialize mint
+        assert_matches!(
+            banks_client
+                .process_transaction(create_mint_transaction(
+                    &payer,
+                    &mint_keypair,
+                    &payer,
+                    recent_blockhash
+                ))
+                .await,
+            Ok(())
+        );
+        // create and initialize seller token account
+        assert_matches!(
+            banks_client
+                .process_transaction(create_token_account_transaction(
+                    &payer,
+                    &mint_keypair,
+                    recent_blockhash,
+                    &seller_token_keypair,
+                    &payer.pubkey(),
+                    11,
+                ))
+                .await,
+            Ok(())
+        );
+        // create and initialize buyer token account
+        assert_matches!(
+            banks_client
+                .process_transaction(create_token_account_transaction(
+                    &payer,
+                    &mint_keypair,
+                    recent_blockhash,
+                    &buyer_token_keypair,
+                    &payer.pubkey(),
+                    2000000,
+                ))
+                .await,
+            Ok(())
+        );
+
         create_order_account(
             &order_id,
             amount,
             &program_id,
             &merchant_account_pubkey,
+            &seller_token_keypair.pubkey(),
+            &buyer_token_keypair.pubkey(),
             &mut banks_client,
             payer,
             recent_blockhash,

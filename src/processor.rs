@@ -124,6 +124,8 @@ pub fn process_express_checkout(
     let signer_info = next_account_info(account_info_iter)?;
     let order_info = next_account_info(account_info_iter)?;
     let merchant_info = next_account_info(account_info_iter)?;
+    let seller_token_info = next_account_info(account_info_iter)?;
+    let buyer_token_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
 
@@ -138,7 +140,19 @@ pub fn process_express_checkout(
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
-
+    // ensure token accounts are owned by token program
+    if *seller_token_info.owner != spl_token::id() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if *buyer_token_info.owner != spl_token::id() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // Get mint details and verify that they match token account
+    let seller_token_data = TokenAccount::unpack(&seller_token_info.data.borrow())?;
+    let buyer_token_data = TokenAccount::unpack(&buyer_token_info.data.borrow())?;
+    if seller_token_data.mint != buyer_token_data.mint {
+        return Err(PaymentProcessorError::MintNotEqual.into());
+    }
     // test that order account pubkey is correct
     let address_with_seed = match &order_id.get(..MAX_SEED_LEN) {
         Some(substring) => {
@@ -147,7 +161,6 @@ pub fn process_express_checkout(
         None => Pubkey::create_with_seed(signer_info.key, &order_id, &program_id)
             .unwrap(),
     };
-
     if *order_info.key != address_with_seed {
         return Err(ProgramError::InvalidSeeds);
     }
