@@ -69,7 +69,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
     let address_with_seed =
         Pubkey::create_with_seed(signer_info.key, PAYMENT_PROCESSOR, program_id)?;
     if *merchant_info.key != address_with_seed {
-        return Err(ProgramError::IncorrectProgramId);
+        return Err(ProgramError::InvalidSeeds);
     }
     // try create merchant account
     let create_account_ix = system_instruction::create_account_with_seed(
@@ -94,7 +94,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
 
     // ensure merchant account is rent exempt
     if !rent.is_exempt(merchant_info.lamports(), MerchantAccount::LEN) {
-        return Err(PaymentProcessorError::NotRentExempt.into());
+        return Err(ProgramError::AccountNotRentExempt);
     }
 
     // get the merchant account data
