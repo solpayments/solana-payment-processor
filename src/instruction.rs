@@ -66,11 +66,11 @@ pub fn register_merchant(
 pub fn express_checkout(
     program_id: Pubkey,
     signer_pubkey: Pubkey,
-    payer_token_acc_pubkey: Pubkey,
-    order_acc_pubkey: Pubkey,
-    order_token_acc_pubkey: Pubkey,
-    merchant_acc_pubkey: Pubkey,
-    mint_pubkey: Pubkey,
+    // payer_token_acc_pubkey: Pubkey,
+    order_account_pubkey: Pubkey,
+    // order_token_acc_pubkey: Pubkey,
+    merchant_account_pubkey: Pubkey,
+    // mint_pubkey: Pubkey,
     amount: u64,
     order_id: String,
 ) -> Instruction {
@@ -78,14 +78,14 @@ pub fn express_checkout(
         program_id,
         accounts: vec![
             AccountMeta::new(signer_pubkey, true),
-            AccountMeta::new(payer_token_acc_pubkey, false),
-            AccountMeta::new(order_acc_pubkey, false),
-            AccountMeta::new(order_token_acc_pubkey, false),
-            AccountMeta::new_readonly(merchant_acc_pubkey, false),
-            AccountMeta::new_readonly(mint_pubkey, false),
-            AccountMeta::new_readonly(spl_token::id(), false),
+            // AccountMeta::new(payer_token_acc_pubkey, false),
+            AccountMeta::new(order_account_pubkey, false),
+            // AccountMeta::new(order_token_acc_pubkey, false),
+            AccountMeta::new_readonly(merchant_account_pubkey, false),
+            // AccountMeta::new_readonly(mint_pubkey, false),
+            // AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(sysvar::clock::id(), false),
+            // AccountMeta::new_readonly(sysvar::clock::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
         data: PaymentProcessorInstruction::ExpressCheckout { amount, order_id }
@@ -99,11 +99,12 @@ mod test {
     use {
         super::*,
         crate::instruction::PaymentProcessorInstruction,
-        crate::processor::MERCHANT,
+        crate::processor::{MAX_SEED_LEN, MERCHANT},
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         assert_matches::*,
         solana_program::{
             hash::Hash,
+            msg,
             program_pack::{IsInitialized, Pack},
             rent::Rent,
             system_instruction,
@@ -181,7 +182,6 @@ mod test {
 
     async fn create_merchant_account() -> (Pubkey, Pubkey, BanksClient, Keypair, Hash) {
         let program_id = Pubkey::from_str(&"mosh111111111111111111111111111111111111111").unwrap();
-        // let merchant_keypair = Keypair::new();
 
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
             "sol_payment_processor",
@@ -215,6 +215,41 @@ mod test {
         );
     }
 
+    async fn create_order_account(
+        order_id: &String,
+        amount: u64,
+        program_id: &Pubkey,
+        merchant_account_pubkey: &Pubkey,
+        banks_client: &mut BanksClient,
+        payer: Keypair,
+        recent_blockhash: Hash,
+    ) {
+        let order_acc_pubkey = match &order_id.get(..MAX_SEED_LEN) {
+            Some(substring) => {
+                Pubkey::create_with_seed(&payer.pubkey(), substring, &program_id).unwrap()
+            }
+            None => {
+                Pubkey::create_with_seed(&payer.pubkey(), &order_id, &program_id)
+                    .unwrap()
+            }
+        };
+
+        // call express checkout ix
+        let mut transaction = Transaction::new_with_payer(
+            &[express_checkout(
+                *program_id,
+                payer.pubkey(),
+                order_acc_pubkey,
+                *merchant_account_pubkey,
+                amount,
+                (&order_id).to_string(),
+            )],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer], recent_blockhash);
+        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+    }
+
     #[tokio::test]
     async fn test_register_merchant() {
         let result = create_merchant_account().await;
@@ -246,7 +281,38 @@ mod test {
 
     #[tokio::test]
     async fn test_express_checkout() {
-        let result = create_merchant_account().await;
+        let amount: u64 = 2000;
+        let order_id = String::from("1337");
+
+        let merchant_result = create_merchant_account().await;
+        let program_id = merchant_result.0;
+        let merchant_account_pubkey = merchant_result.1;
+        let mut banks_client = merchant_result.2;
+        let payer = merchant_result.3;
+        let recent_blockhash = merchant_result.4;
+
+        create_order_account(
+            &order_id,
+            amount,
+            &program_id,
+            &merchant_account_pubkey,
+            &mut banks_client,
+            payer,
+            recent_blockhash,
+        )
+        .await;
+
+        // let merchant_result = create_order_account(
+        //     order_acc_pubkey,
+        //     merchant_acc_pubkey,
+        //     order_id,
+        //     amount,
+        //     program_id,
+        //     payer,
+        //     recent_blockhash,
+        //     &banks_client,
+        // )
+        // .await;
         // let program_id = result.0;
         // let merchant_account_pubkey = result.1;
         // let mut banks_client = result.2;

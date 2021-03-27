@@ -2,7 +2,7 @@ use crate::{
     error::PaymentProcessorError,
     instruction::PaymentProcessorInstruction,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::get_amounts,
+    utils::{get_amounts, get_order_account_size},
 };
 use borsh::BorshDeserialize;
 use solana_program::program_pack::Pack;
@@ -26,7 +26,9 @@ use spl_token::{
 };
 use std::convert::TryInto;
 
-pub const MERCHANT: &str = "payment-processor";
+pub const MERCHANT: &str = "merchant";
+/// maximum length of derived `Pubkey` seed
+pub const MAX_SEED_LEN: usize = 32;
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -66,8 +68,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
     }
 
     // test that merchant account pubkey is correct
-    let address_with_seed =
-        Pubkey::create_with_seed(signer_info.key, MERCHANT, program_id)?;
+    let address_with_seed = Pubkey::create_with_seed(signer_info.key, MERCHANT, program_id)?;
     if *merchant_info.key != address_with_seed {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -118,9 +119,65 @@ pub fn process_express_checkout(
     amount: u64,
     order_id: String,
 ) -> ProgramResult {
-    // let account_info_iter = &mut accounts.iter();
+    let account_info_iter = &mut accounts.iter();
 
-    // let signer_info = next_account_info(account_info_iter)?;
+    let signer_info = next_account_info(account_info_iter)?;
+    let order_info = next_account_info(account_info_iter)?;
+    let merchant_info = next_account_info(account_info_iter)?;
+    let system_program_info = next_account_info(account_info_iter)?;
+    let rent_sysvar_info = next_account_info(account_info_iter)?;
+
+    let rent = &Rent::from_account_info(rent_sysvar_info)?;
+
+    // ensure signer can sign
+    if !signer_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    // get the merchant account
+    let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
+    if !merchant_account.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // test that order account pubkey is correct
+    let address_with_seed = match &order_id.get(..MAX_SEED_LEN) {
+        Some(substring) => {
+            Pubkey::create_with_seed(signer_info.key, substring, &program_id).unwrap()
+        }
+        None => Pubkey::create_with_seed(signer_info.key, &order_id, &program_id)
+            .unwrap(),
+    };
+
+    if *order_info.key != address_with_seed {
+        return Err(ProgramError::InvalidSeeds);
+    }
+    // try create order account
+    let order_account_size = get_order_account_size(&order_id);
+    let create_account_ix = system_instruction::create_account_with_seed(
+        signer_info.key,
+        order_info.key,
+        signer_info.key,
+        &order_id,
+        Rent::default().minimum_balance(order_account_size),
+        order_account_size as u64,
+        program_id,
+    );
+    msg!("Creating order account on chain...");
+    invoke(
+        &create_account_ix,
+        &[
+            signer_info.clone(),
+            order_info.clone(),
+            signer_info.clone(),
+            system_program_info.clone(),
+        ],
+    )?;
+
+    // ensure merchant account is rent exempt
+    if !rent.is_exempt(order_info.lamports(), MerchantAccount::LEN) {
+        return Err(ProgramError::AccountNotRentExempt);
+    }
+
     // let payer_token_info = next_account_info(account_info_iter)?;
     // let order_acc_info = next_account_info(account_info_iter)?;
     // let order_token_acc_info = next_account_info(account_info_iter)?;
@@ -134,15 +191,6 @@ pub fn process_express_checkout(
     // let rent = &Rent::from_account_info(rent_sysvar_info)?;
     // let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
 
-    // // ensure signer can sign
-    // if !signer_info.is_signer {
-    //     return Err(ProgramError::MissingRequiredSignature);
-    // }
-    // // get the merchant account
-    // let merchant_account = MerchantAccount::unpack(&merchant_acc_info.data.borrow())?;
-    // if !merchant_account.is_initialized() {
-    //     return Err(ProgramError::UninitializedAccount);
-    // }
     // // ensure payer token account is owned by token program
     // if *payer_token_info.owner != spl_token::id() {
     //     return Err(ProgramError::IncorrectProgramId);
