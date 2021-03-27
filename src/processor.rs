@@ -18,21 +18,15 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
-use spl_token;
-<<<<<<< HEAD
-use spl_token::state::{Account as TokenAccount, AccountState, Mint};
-use spl_associated_token_account;
-||||||| merged common ancestors
-use spl_token::state::{Account as TokenAccount, AccountState, Mint};
-=======
+// use spl_associated_token_account;
 use spl_token::{
+    self,
     instruction::initialize_account,
     state::{Account as TokenAccount, AccountState, Mint},
 };
 use std::convert::TryInto;
 
 pub const PAYMENT_PROCESSOR: &str = "payment-processor";
->>>>>>> testsacc
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {

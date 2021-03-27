@@ -253,7 +253,7 @@ mod test {
         let payer = result.3;
         let recent_blockhash = result.4;
 
-        let amount = 2000;
+        let amount: u64 = 2000;
         let order_id = String::from("1337");
         let order_account_size = OrderAccount::MIN_LEN + order_id.chars().count() + 4;
 
@@ -316,9 +316,8 @@ mod test {
                 token_keypair.pubkey(),
                 order_keypair.pubkey(),
                 associated_order_token_address,
-                merchant_keypair.pubkey(),
-                mint_keypair.pubkey(),
                 merchant_account_pubkey,
+                mint_keypair.pubkey(),
                 amount,
                 order_id,
             )],
