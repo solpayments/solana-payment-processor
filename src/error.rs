@@ -1,16 +1,19 @@
-use thiserror::Error;
 use num_traits::FromPrimitive;
 use solana_program::{
     decode_error::DecodeError,
     msg,
-    program_error::{PrintProgramError, ProgramError}
+    program_error::{PrintProgramError, ProgramError},
 };
+use thiserror::Error;
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum PaymentProcessorError {
     /// Invalid instruction
     #[error("Invalid Instruction")]
     InvalidInstruction,
+    /// Seller And Buyer Mints Not The Same
+    #[error("Seller And Buyer Mints Not The Same")]
+    MintNotEqual,
 }
 
 impl From<PaymentProcessorError> for ProgramError {
@@ -32,6 +35,9 @@ impl PrintProgramError for PaymentProcessorError {
     {
         match self {
             PaymentProcessorError::InvalidInstruction => msg!("Error: Invalid Instruction"),
+            PaymentProcessorError::MintNotEqual => {
+                msg!("Error: Seller And Buyer Mints Not The Same")
+            }
         }
     }
 }
