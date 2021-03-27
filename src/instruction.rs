@@ -14,7 +14,8 @@ pub enum PaymentProcessorInstruction {
     ///
     /// 0. `[signer]` The account of the person initializing the merchant account
     /// 1. `[writable]` The merchant account.  Owned by this program
-    /// 2. `[]` The rent sysvar
+    /// 2. `[]` System program
+    /// 3. `[]` The rent sysvar
     RegisterMerchant,
     /// Express Checkout - create order and pay for it in one transaction
     ///
@@ -52,6 +53,7 @@ pub fn register_merchant(
         accounts: vec![
             AccountMeta::new(signer_pubkey, true),
             AccountMeta::new(merchant_acc_pubkey, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
         data: PaymentProcessorInstruction::RegisterMerchant
@@ -97,6 +99,7 @@ mod test {
     use {
         super::*,
         crate::instruction::PaymentProcessorInstruction,
+        crate::processor::PAYMENT_PROCESSOR,
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         assert_matches::*,
         solana_program::{
@@ -176,42 +179,28 @@ mod test {
         transaction
     }
 
-    async fn create_merchant_account() -> (Pubkey, Keypair, BanksClient, Keypair, Hash) {
+    async fn create_merchant_account() -> (Pubkey, Pubkey, BanksClient, Keypair, Hash) {
         let program_id = Pubkey::from_str(&"mosh111111111111111111111111111111111111111").unwrap();
-        let merchant_keypair = Keypair::new();
+        // let merchant_keypair = Keypair::new();
 
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
-            "solana_payment_processor",
+            "sol_payment_processor",
             program_id,
             processor!(PaymentProcessorInstruction::process),
         )
         .start()
         .await;
 
-        // first create merchant account
-        let mut create_user_tx = Transaction::new_with_payer(
-            &[system_instruction::create_account(
-                &payer.pubkey(),
-                &merchant_keypair.pubkey(),
-                Rent::default().minimum_balance(MerchantAccount::LEN),
-                MerchantAccount::LEN.try_into().unwrap(),
-                &program_id,
-            )],
-            Some(&payer.pubkey()),
-        );
-        create_user_tx.partial_sign(&[&merchant_keypair], recent_blockhash);
-        create_user_tx.sign(&[&payer], recent_blockhash);
-        assert_matches!(
-            banks_client.process_transaction(create_user_tx).await,
-            Ok(())
-        );
+        // first we create a public key for the merchant account
+        let merchant_acc_pubkey =
+            Pubkey::create_with_seed(&payer.pubkey(), PAYMENT_PROCESSOR, &program_id).unwrap();
 
         // then call register merchant ix
         let mut transaction = Transaction::new_with_payer(
             &[register_merchant(
                 program_id,
                 payer.pubkey(),
-                merchant_keypair.pubkey(),
+                merchant_acc_pubkey,
             )],
             Some(&payer.pubkey()),
         );
@@ -219,7 +208,7 @@ mod test {
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
         return (
             program_id,
-            merchant_keypair,
+            merchant_acc_pubkey,
             banks_client,
             payer,
             recent_blockhash,
@@ -229,11 +218,11 @@ mod test {
     #[tokio::test]
     async fn test_register_merchant() {
         let result = create_merchant_account().await;
-        let merchant_keypair = result.1;
+        let program_id = result.0;
+        let merchant_pubkey = result.1;
         let mut banks_client = result.2;
-
         // test contents of merchant account
-        let merchant_account = banks_client.get_account(merchant_keypair.pubkey()).await;
+        let merchant_account = banks_client.get_account(merchant_pubkey).await;
         let merchant_account = match merchant_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
@@ -241,6 +230,7 @@ mod test {
             },
             Err(error) => panic!("Problem: {:?}", error),
         };
+        assert_eq!(merchant_account.owner, program_id);
         let merchant_data = MerchantAccount::unpack(&merchant_account.data);
         let merchant_data = match merchant_data {
             Ok(data) => data,
@@ -248,20 +238,17 @@ mod test {
         };
         assert_eq!(true, merchant_data.is_initialized);
         assert_eq!(
-            merchant_keypair.pubkey(),
+            merchant_pubkey,
             Pubkey::new_from_array(merchant_data.merchant_pubkey)
         );
-        assert_eq!(
-            merchant_keypair.pubkey().to_bytes(),
-            merchant_data.merchant_pubkey
-        );
+        assert_eq!(merchant_pubkey.to_bytes(), merchant_data.merchant_pubkey);
     }
 
     #[tokio::test]
     async fn test_express_checkout() {
         let result = create_merchant_account().await;
         let program_id = result.0;
-        let merchant_keypair = result.1;
+        let merchant_account_pubkey = result.1;
         let mut banks_client = result.2;
         let payer = result.3;
         let recent_blockhash = result.4;
@@ -331,6 +318,7 @@ mod test {
                 associated_order_token_address,
                 merchant_keypair.pubkey(),
                 mint_keypair.pubkey(),
+                merchant_account_pubkey,
                 amount,
                 order_id,
             )],
@@ -356,10 +344,11 @@ mod test {
         assert_eq!(true, order_data.is_initialized());
         assert_eq!(OrderStatus::Paid as u8, order_data.status);
         assert_eq!(
-            merchant_keypair.pubkey().to_bytes(),
+            merchant_account_pubkey.to_bytes(),
             order_data.merchant_pubkey
         );
         assert_eq!(mint_keypair.pubkey().to_bytes(), order_data.mint_pubkey);
+        assert_eq!(merchant_account_pubkey.to_bytes(), order_data.mint_pubkey);
         assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
         assert_eq!(2000, order_data.expected_amount);
         assert_eq!(2000, order_data.paid_amount);

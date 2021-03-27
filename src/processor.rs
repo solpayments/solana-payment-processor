@@ -15,11 +15,24 @@ use solana_program::{
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
+    system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
 use spl_token;
+<<<<<<< HEAD
 use spl_token::state::{Account as TokenAccount, AccountState, Mint};
 use spl_associated_token_account;
+||||||| merged common ancestors
+use spl_token::state::{Account as TokenAccount, AccountState, Mint};
+=======
+use spl_token::{
+    instruction::initialize_account,
+    state::{Account as TokenAccount, AccountState, Mint},
+};
+use std::convert::TryInto;
+
+pub const PAYMENT_PROCESSOR: &str = "payment-processor";
+>>>>>>> testsacc
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -49,6 +62,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
 
     let signer_info = next_account_info(account_info_iter)?;
     let merchant_info = next_account_info(account_info_iter)?;
+    let system_sysvar_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
 
@@ -57,17 +71,39 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // ensure merchant account is owned by this program
-    if *merchant_info.owner != *program_id {
+    // test that merchant account pubkey is correct
+    let address_with_seed =
+        Pubkey::create_with_seed(signer_info.key, PAYMENT_PROCESSOR, program_id)?;
+    if *merchant_info.key != address_with_seed {
         return Err(ProgramError::IncorrectProgramId);
     }
+    // try create merchant account
+    let create_account_ix = system_instruction::create_account_with_seed(
+        signer_info.key,
+        merchant_info.key,
+        signer_info.key,
+        PAYMENT_PROCESSOR,
+        Rent::default().minimum_balance(MerchantAccount::LEN),
+        MerchantAccount::LEN.try_into().unwrap(),
+        program_id,
+    );
+    msg!("Creating merchant account on chain...");
+    invoke(
+        &create_account_ix,
+        &[
+            signer_info.clone(),
+            merchant_info.clone(),
+            signer_info.clone(),
+            system_sysvar_info.clone(),
+        ],
+    )?;
 
     // ensure merchant account is rent exempt
     if !rent.is_exempt(merchant_info.lamports(), MerchantAccount::LEN) {
         return Err(PaymentProcessorError::NotRentExempt.into());
     }
 
-    // get the merchant account
+    // get the merchant account data
     let mut merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
     if merchant_account.is_initialized() {
         return Err(ProgramError::AccountAlreadyInitialized);
@@ -162,6 +198,7 @@ pub fn process_express_checkout(
     // Get fee and take home amount
     let (take_home_amount, fee_amount) = get_amounts(amount);
 
+    let (pda, nonce) = Pubkey::find_program_address(&[b"payment-processor"], program_id);
     // get the order account
     // TODO: ensure this account is not already initialized
     let mut order_account_data = order_acc_info.try_borrow_mut_data()?;
