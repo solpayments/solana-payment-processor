@@ -1,3 +1,5 @@
+use crate::state::OrderAccount;
+
 const FEE: u64 = 3;
 
 /// Given the expected amount, calculate the fee and take home amount
@@ -17,6 +19,11 @@ pub fn get_amounts(amount: u64) -> (u64, u64) {
     }
 
     (take_home_amount, fee_amount)
+}
+
+/// get order account size
+pub fn get_order_account_size(order_id: &String) -> usize {
+    return OrderAccount::MIN_LEN + order_id.chars().count() + 4;
 }
 
 #[cfg(test)]
