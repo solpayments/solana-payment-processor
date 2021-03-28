@@ -126,6 +126,8 @@ pub fn process_express_checkout(
     let merchant_info = next_account_info(account_info_iter)?;
     let seller_token_info = next_account_info(account_info_iter)?;
     let buyer_token_info = next_account_info(account_info_iter)?;
+    let mint_info = next_account_info(account_info_iter)?;
+    let token_program_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
 
@@ -141,25 +143,24 @@ pub fn process_express_checkout(
         return Err(ProgramError::UninitializedAccount);
     }
     // ensure token accounts are owned by token program
-    if *seller_token_info.owner != spl_token::id() {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    // if *seller_token_info.owner != spl_token::id() {
+    //     return Err(ProgramError::IncorrectProgramId);
+    // }
     if *buyer_token_info.owner != spl_token::id() {
         return Err(ProgramError::IncorrectProgramId);
     }
     // Get mint details and verify that they match token account
-    let seller_token_data = TokenAccount::unpack(&seller_token_info.data.borrow())?;
-    let buyer_token_data = TokenAccount::unpack(&buyer_token_info.data.borrow())?;
-    if seller_token_data.mint != buyer_token_data.mint {
-        return Err(PaymentProcessorError::MintNotEqual.into());
-    }
+    // let seller_token_data = TokenAccount::unpack(&seller_token_info.data.borrow())?;
+    // let buyer_token_data = TokenAccount::unpack(&buyer_token_info.data.borrow())?;
+    // if seller_token_data.mint != buyer_token_data.mint {
+    //     return Err(PaymentProcessorError::MintNotEqual.into());
+    // }
     // test that order account pubkey is correct
     let address_with_seed = match &order_id.get(..MAX_SEED_LEN) {
         Some(substring) => {
             Pubkey::create_with_seed(signer_info.key, substring, &program_id).unwrap()
         }
-        None => Pubkey::create_with_seed(signer_info.key, &order_id, &program_id)
-            .unwrap(),
+        None => Pubkey::create_with_seed(signer_info.key, &order_id, &program_id).unwrap(),
     };
     if *order_info.key != address_with_seed {
         return Err(ProgramError::InvalidSeeds);
@@ -185,12 +186,42 @@ pub fn process_express_checkout(
             system_program_info.clone(),
         ],
     )?;
-
-    // ensure merchant account is rent exempt
-    if !rent.is_exempt(order_info.lamports(), MerchantAccount::LEN) {
-        return Err(ProgramError::AccountNotRentExempt);
-    }
-
+    msg!("Creating merchant token account on chain...");
+    let create_order_token_acc_ix = spl_associated_token_account::create_associated_token_account(
+        signer_info.key,
+        order_info.key,
+        mint_info.key,
+    );
+    // msg!("Oo: >>><<<< {:?}", create_order_token_acc_ix);
+    // msg!(
+    //     "seller_token_pubkey2: **************** {:?}",
+    //     seller_token_pubkey2
+    // );
+    // msg!("order_info: **************** {:?}", order_info.key);
+    // msg!(
+    //     "system_program_info: **************** {:?}",
+    //     system_program_info.key
+    // );
+    // msg!(
+    //     "token_program_info: **************** {:?}",
+    //     token_program_info.key
+    // );
+    // msg!(
+    //     "rent_sysvar_info: **************** {:?}",
+    //     rent_sysvar_info.key
+    // );
+    invoke(
+        &create_order_token_acc_ix,
+        &[
+            signer_info.clone(),
+            seller_token_info.clone(),
+            order_info.clone(),
+            mint_info.clone(),
+            system_program_info.clone(), // TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+            token_program_info.clone(), // TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
+            rent_sysvar_info.clone(), // SysvarRent111111111111111111111111111111111
+        ],
+    )?;
     // let payer_token_info = next_account_info(account_info_iter)?;
     // let order_acc_info = next_account_info(account_info_iter)?;
     // let order_token_acc_info = next_account_info(account_info_iter)?;
@@ -273,6 +304,11 @@ pub fn process_express_checkout(
     // };
 
     // order.pack(&mut order_account_data);
+
+    // ensure order account is rent exempt
+    // if !rent.is_exempt(order_info.lamports(), MerchantAccount::LEN) {
+    //     return Err(ProgramError::AccountNotRentExempt);
+    // }
 
     Ok(())
 }
