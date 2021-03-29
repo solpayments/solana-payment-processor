@@ -31,7 +31,11 @@ pub fn get_order_account_size(order_id: &String, secret: &String) -> usize {
 }
 
 // Derive the order account pubkey
-pub fn get_order_account_pubkey(order_id: &String, wallet_pk: &Pubkey, program_id: &Pubkey) -> Pubkey {
+pub fn get_order_account_pubkey(
+    order_id: &String,
+    wallet_pk: &Pubkey,
+    program_id: &Pubkey,
+) -> Pubkey {
     match &order_id.get(..MAX_SEED_LEN) {
         Some(substring) => Pubkey::create_with_seed(wallet_pk, substring, &program_id).unwrap(),
         None => Pubkey::create_with_seed(wallet_pk, &order_id, &program_id).unwrap(),
@@ -52,5 +56,18 @@ mod test {
         assert_eq!((99, 0), get_amounts(99));
         assert_eq!((80, 0), get_amounts(80));
         assert_eq!((0, 0), get_amounts(0));
+    }
+
+    #[tokio::test]
+    async fn test_get_order_account_size() {
+        assert_eq!(
+            199,
+            get_order_account_size(&String::from("123456"), &String::from("password"))
+        );
+        assert_eq!(
+            191,
+            get_order_account_size(&String::from("test-6"), &String::from(""))
+        );
+        assert_eq!(424, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type")));
     }
 }
