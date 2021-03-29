@@ -127,7 +127,6 @@ pub fn process_express_checkout(
     let seller_token_info = next_account_info(account_info_iter)?;
     let buyer_token_info = next_account_info(account_info_iter)?;
     let mint_info = next_account_info(account_info_iter)?;
-    let associated_token_program_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
     let clock_sysvar_info = next_account_info(account_info_iter)?;
@@ -149,7 +148,7 @@ pub fn process_express_checkout(
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
-    // ensure token accounts are owned by token program
+    // ensure buyer token account is owned by token program
     if *buyer_token_info.owner != spl_token::id() {
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -169,7 +168,7 @@ pub fn process_express_checkout(
     if *order_info.key != address_with_seed {
         return Err(ProgramError::InvalidSeeds);
     }
-    // try create order account
+    // create order account
     let order_account_size = get_order_account_size(&order_id);
     let create_account_ix = system_instruction::create_account_with_seed(
         signer_info.key,
@@ -190,23 +189,109 @@ pub fn process_express_checkout(
             system_program_info.clone(),
         ],
     )?;
-    // msg!("Creating merchant token account on chain...");
-    let create_order_token_acc_ix = spl_associated_token_account::create_associated_token_account(
-        signer_info.key,
-        order_info.key,
-        mint_info.key,
-    );
-    invoke(
-        &create_order_token_acc_ix,
+
+    // next we are going to try and create a token account owned by the order
+    // account and whose address is 'owned' by the order account
+    // this is remarkably similar to spl_associated_token_account::create_associated_token_account
+    // derive the token account address
+    let (associated_token_address, bump_seed) = Pubkey::find_program_address(
         &[
-            signer_info.clone(),
+            &order_info.key.to_bytes(),
+            &spl_token::id().to_bytes(),
+            &mint_info.key.to_bytes(),
+        ],
+        program_id,
+    );
+    // assert that the derived address matches the one supplied
+    if associated_token_address != *seller_token_info.key {
+        msg!("Error: Associated address does not match seed derivation");
+        return Err(ProgramError::InvalidSeeds);
+    }
+    // get signer seeds
+    let associated_token_account_signer_seeds: &[&[_]] = &[
+        &order_info.key.to_bytes(),
+        &spl_token::id().to_bytes(),
+        &mint_info.key.to_bytes(),
+        &[bump_seed],
+    ];
+    // Fund the associated seller token account with the minimum balance to be rent exempt
+    let rent = &Rent::from_account_info(rent_sysvar_info)?;
+    let required_lamports = rent
+        .minimum_balance(spl_token::state::Account::LEN)
+        .max(1)
+        .saturating_sub(seller_token_info.lamports());
+    if required_lamports > 0 {
+        msg!(
+            "Transfer {} lamports to the associated seller token account",
+            required_lamports
+        );
+        invoke(
+            &system_instruction::transfer(
+                &signer_info.key,
+                seller_token_info.key,
+                required_lamports,
+            ),
+            &[
+                signer_info.clone(),
+                seller_token_info.clone(),
+                system_program_info.clone(),
+            ],
+        )?;
+    }
+    msg!("Allocate space for the associated seller token account");
+    invoke_signed(
+        &system_instruction::allocate(
+            seller_token_info.key,
+            spl_token::state::Account::LEN as u64,
+        ),
+        &[
             seller_token_info.clone(),
-            order_info.clone(),
-            mint_info.clone(),
             system_program_info.clone(),
-            token_program_info.clone(),
+        ],
+        &[&associated_token_account_signer_seeds],
+    )?;
+    msg!("Assign the associated seller token account to the SPL Token program");
+    invoke_signed(
+        &system_instruction::assign(seller_token_info.key, &spl_token::id()),
+        &[
+            seller_token_info.clone(),
+            system_program_info.clone(),
+        ],
+        &[&associated_token_account_signer_seeds],
+    )?;
+    msg!("Initialize the associated seller token account");
+    invoke(
+        &spl_token::instruction::initialize_account(
+            &spl_token::id(),
+            seller_token_info.key,
+            mint_info.key,
+            order_info.key,
+        )?,
+        &[
+            seller_token_info.clone(),
+            mint_info.clone(),
+            order_info.clone(),
             rent_sysvar_info.clone(),
-            associated_token_program_info.clone()
+            token_program_info.clone(),
+        ],
+    )?;
+
+    msg!("Transfer payment amount to associated seller token account...");
+    let transfer_amount_ix = spl_token::instruction::transfer(
+        token_program_info.key,
+        buyer_token_info.key,
+        seller_token_info.key,
+        signer_info.key,
+        &[&signer_info.key],
+        amount,
+    )?;
+    invoke(
+        &transfer_amount_ix,
+        &[
+            buyer_token_info.clone(),
+            seller_token_info.clone(),
+            signer_info.clone(),
+            token_program_info.clone(),
         ],
     )?;
 
@@ -223,6 +308,7 @@ pub fn process_express_checkout(
         modified: *timestamp,
         merchant_pubkey: merchant_info.key.to_bytes(),
         mint_pubkey: mint_info.key.to_bytes(),
+        token_pubkey: seller_token_info.key.to_bytes(),
         payer_pubkey: signer_info.key.to_bytes(),
         expected_amount: amount,
         paid_amount: amount,
@@ -234,7 +320,7 @@ pub fn process_express_checkout(
     order.pack(&mut order_account_data);
 
     // ensure order account is rent exempt
-    if !rent.is_exempt(order_info.lamports(), MerchantAccount::LEN) {
+    if !rent.is_exempt(order_info.lamports(), order_account_size) {
         return Err(ProgramError::AccountNotRentExempt);
     }
 

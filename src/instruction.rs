@@ -24,11 +24,13 @@ pub enum PaymentProcessorInstruction {
     /// 0. `[signer]` The account of the person initializing the transaction
     /// 1. `[writable]` The payer's token account to be used for the payment
     /// 2. `[writable]` The order account.  Owned by this program
-    /// 3. `[writable]` The merchant account.  Owned by this program
-    /// 4. `[]` The token program
-    /// 5. `[]` The System program
-    /// 6. `[]` The clock sysvar
-    /// 7. `[]` The rent sysvar
+    /// 3. `[]` The merchant account.  Owned by this program
+    /// 4. `[writable]` The seller token account
+    /// 5. `[writable]` The buyer token account
+    /// 6. `[]` The token program
+    /// 7. `[]` The System program
+    /// 8. `[]` The clock sysvar
+    /// 9. `[]` The rent sysvar
     ExpressCheckout {
         #[allow(dead_code)] // not dead code..
         amount: u64,
@@ -83,7 +85,6 @@ pub fn express_checkout(
             AccountMeta::new(seller_token_account_pubkey, false),
             AccountMeta::new(buyer_token_account_pubkey, false),
             AccountMeta::new_readonly(mint_pubkey, false),
-            AccountMeta::new_readonly(spl_associated_token_account::id(), false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
@@ -117,7 +118,7 @@ mod test {
         },
         spl_associated_token_account,
         spl_token::{
-            instruction::{initialize_account, initialize_mint},
+            instruction::{initialize_account, initialize_mint, mint_to},
             state::{Account as TokenAccount, Mint},
         },
         std::convert::TryInto,
@@ -164,7 +165,7 @@ mod test {
             system_instruction::create_account(
                 &payer.pubkey(),
                 &token_account.pubkey(),
-                Rent::default().minimum_balance(TokenAccount::LEN) + amount,
+                Rent::default().minimum_balance(TokenAccount::LEN),
                 TokenAccount::LEN as u64,
                 &spl_token::id(),
             ),
@@ -173,6 +174,15 @@ mod test {
                 &token_account.pubkey(),
                 &mint.pubkey(),
                 token_account_owner,
+            )
+            .unwrap(),
+            mint_to(
+                &spl_token::id(),
+                &mint.pubkey(),
+                &token_account.pubkey(),
+                token_account_owner,
+                &[&payer.pubkey()],
+                amount,
             )
             .unwrap(),
         ];
@@ -226,7 +236,7 @@ mod test {
         banks_client: &mut BanksClient,
         payer: &Keypair,
         recent_blockhash: Hash,
-    ) -> Pubkey {
+    ) -> (Pubkey, Pubkey) {
         let order_acc_pubkey = match &order_id.get(..MAX_SEED_LEN) {
             Some(substring) => {
                 Pubkey::create_with_seed(&payer.pubkey(), substring, &program_id).unwrap()
@@ -234,9 +244,13 @@ mod test {
             None => Pubkey::create_with_seed(&payer.pubkey(), &order_id, &program_id).unwrap(),
         };
 
-        let seller_token_pubkey = spl_associated_token_account::get_associated_token_address(
-            &order_acc_pubkey,
-            &mint_pubkey,
+        let (seller_token_pubkey, _bump_seed) = Pubkey::find_program_address(
+            &[
+                &order_acc_pubkey.to_bytes(),
+                &spl_token::id().to_bytes(),
+                &mint_pubkey.to_bytes(),
+            ],
+            program_id,
         );
 
         // call express checkout ix
@@ -257,7 +271,7 @@ mod test {
         transaction.sign(&[payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
 
-        order_acc_pubkey
+        (order_acc_pubkey, seller_token_pubkey)
     }
 
     #[tokio::test]
@@ -332,7 +346,7 @@ mod test {
             Ok(())
         );
 
-        let order_acc_pubkey = create_order_account(
+        let (order_acc_pubkey, seller_account_pubkey) = create_order_account(
             &order_id,
             amount,
             &program_id,
@@ -366,12 +380,34 @@ mod test {
             order_data.merchant_pubkey
         );
         assert_eq!(mint_keypair.pubkey().to_bytes(), order_data.mint_pubkey);
-        assert_eq!(merchant_account_pubkey.to_bytes(), order_data.merchant_pubkey);
+        assert_eq!(seller_account_pubkey.to_bytes(), order_data.token_pubkey);
+        assert_eq!(
+            merchant_account_pubkey.to_bytes(),
+            order_data.merchant_pubkey
+        );
         assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
         assert_eq!(2000, order_data.expected_amount);
         assert_eq!(2000, order_data.paid_amount);
         assert_eq!(1994, order_data.take_home_amount);
         assert_eq!(6, order_data.fee_amount);
         assert_eq!(String::from("1337"), order_data.order_id);
+
+        // test contents of seller token account
+        let seller_token_account = banks_client.get_account(seller_account_pubkey).await;
+        let seller_token_account = match seller_token_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        let seller_account_data = spl_token::state::Account::unpack(&seller_token_account.data);
+        let seller_account_data = match seller_account_data {
+            Ok(data) => data,
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(2000, seller_account_data.amount);
+        assert_eq!(order_acc_pubkey, seller_account_data.owner);
+        assert_eq!(mint_keypair.pubkey(), seller_account_data.mint);
     }
 }
