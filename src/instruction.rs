@@ -106,7 +106,6 @@ mod test {
         assert_matches::*,
         solana_program::{
             hash::Hash,
-            msg,
             program_pack::{IsInitialized, Pack},
             rent::Rent,
             system_instruction,
@@ -116,12 +115,10 @@ mod test {
             signature::{Keypair, Signer},
             transaction::Transaction,
         },
-        spl_associated_token_account,
         spl_token::{
             instruction::{initialize_account, initialize_mint, mint_to},
             state::{Account as TokenAccount, Mint},
         },
-        std::convert::TryInto,
         std::str::FromStr,
     };
 

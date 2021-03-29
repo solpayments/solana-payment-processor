@@ -21,8 +21,7 @@ use solana_program::{
 // use spl_associated_token_account;
 use spl_token::{
     self,
-    instruction::initialize_account,
-    state::{Account as TokenAccount, AccountState, Mint},
+    state::{Account as TokenAccount},
 };
 use std::convert::TryInto;
 
@@ -215,7 +214,6 @@ pub fn process_express_checkout(
         &[bump_seed],
     ];
     // Fund the associated seller token account with the minimum balance to be rent exempt
-    let rent = &Rent::from_account_info(rent_sysvar_info)?;
     let required_lamports = rent
         .minimum_balance(spl_token::state::Account::LEN)
         .max(1)
