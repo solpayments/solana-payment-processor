@@ -22,8 +22,8 @@ pub fn get_amounts(amount: u64) -> (u64, u64) {
 }
 
 /// get order account size
-pub fn get_order_account_size(order_id: &String) -> usize {
-    return OrderAccount::MIN_LEN + order_id.chars().count() + 4;
+pub fn get_order_account_size(order_id: &String, secret: &String) -> usize {
+    return OrderAccount::MIN_LEN + order_id.chars().count() + 4 + secret.chars().count() + 4;
 }
 
 #[cfg(test)]

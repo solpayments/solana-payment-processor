@@ -41,6 +41,10 @@ pub enum PaymentProcessorInstruction {
         /// the external order id (as in issued by the merchant)
         #[allow(dead_code)] // not dead code..
         order_id: String,
+        // An extra field that can store an encrypted (ot not encrypted) string
+        // that the merchant can use to assert if a transaction is authenci
+        #[allow(dead_code)] // not dead code..
+        secret: String,
     },
 }
 
@@ -75,6 +79,7 @@ pub fn express_checkout(
     mint_pubkey: Pubkey,
     amount: u64,
     order_id: String,
+    secret: String,
 ) -> Instruction {
     Instruction {
         program_id,
@@ -90,7 +95,7 @@ pub fn express_checkout(
             AccountMeta::new_readonly(sysvar::clock::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
-        data: PaymentProcessorInstruction::ExpressCheckout { amount, order_id }
+        data: PaymentProcessorInstruction::ExpressCheckout { amount, order_id, secret }
             .try_to_vec()
             .unwrap(),
     }
@@ -226,6 +231,7 @@ mod test {
     async fn create_order_account(
         order_id: &String,
         amount: u64,
+        secret: &String,
         program_id: &Pubkey,
         merchant_account_pubkey: &Pubkey,
         buyer_token_pubkey: &Pubkey,
@@ -262,6 +268,7 @@ mod test {
                 *mint_pubkey,
                 amount,
                 (&order_id).to_string(),
+                (&secret).to_string(),
             )],
             Some(&payer.pubkey()),
         );
@@ -304,6 +311,7 @@ mod test {
     async fn test_express_checkout() {
         let amount: u64 = 2000;
         let order_id = String::from("1337");
+        let secret = String::from("hunter2");
 
         let merchant_result = create_merchant_account().await;
         let program_id = merchant_result.0;
@@ -346,6 +354,7 @@ mod test {
         let (order_acc_pubkey, seller_account_pubkey) = create_order_account(
             &order_id,
             amount,
+            &secret,
             &program_id,
             &merchant_account_pubkey,
             &buyer_token_keypair.pubkey(),
@@ -388,6 +397,7 @@ mod test {
         assert_eq!(1994, order_data.take_home_amount);
         assert_eq!(6, order_data.fee_amount);
         assert_eq!(String::from("1337"), order_data.order_id);
+        assert_eq!(String::from("hunter2"), order_data.secret);
 
         // test contents of seller token account
         let seller_token_account = banks_client.get_account(seller_account_pubkey).await;

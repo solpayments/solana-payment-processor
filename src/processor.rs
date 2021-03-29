@@ -43,9 +43,9 @@ impl PaymentProcessorInstruction {
                 msg!("Instruction: RegisterMerchant");
                 process_register_merchant(program_id, accounts)
             }
-            PaymentProcessorInstruction::ExpressCheckout { amount, order_id } => {
+            PaymentProcessorInstruction::ExpressCheckout { amount, order_id, secret } => {
                 msg!("Instruction: ExpressCheckout");
-                process_express_checkout(program_id, accounts, amount, order_id)
+                process_express_checkout(program_id, accounts, amount, order_id, secret)
             }
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -117,6 +117,7 @@ pub fn process_express_checkout(
     accounts: &[AccountInfo],
     amount: u64,
     order_id: String,
+    secret: String,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -168,7 +169,7 @@ pub fn process_express_checkout(
         return Err(ProgramError::InvalidSeeds);
     }
     // create order account
-    let order_account_size = get_order_account_size(&order_id);
+    let order_account_size = get_order_account_size(&order_id, &secret);
     let create_account_ix = system_instruction::create_account_with_seed(
         signer_info.key,
         order_info.key,
@@ -313,6 +314,7 @@ pub fn process_express_checkout(
         take_home_amount,
         fee_amount: fee_amount as u64,
         order_id,
+        secret,
     };
 
     order.pack(&mut order_account_data);

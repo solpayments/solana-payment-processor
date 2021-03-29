@@ -46,6 +46,7 @@ pub struct OrderAccount {
     pub take_home_amount: u64,
     pub fee_amount: u64,
     pub order_id: String,
+    pub secret: String,
 }
 
 // impl for MerchantAccount
