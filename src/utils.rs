@@ -2,7 +2,7 @@ use crate::state::OrderAccount;
 use solana_program::pubkey::Pubkey;
 
 /// maximum length of derived `Pubkey` seed
-pub const MAX_SEED_LEN: usize = 32;
+const MAX_SEED_LEN: usize = 32;
 /// transaction fee percentage
 const FEE: u64 = 3;
 
