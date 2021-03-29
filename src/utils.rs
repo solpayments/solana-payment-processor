@@ -44,7 +44,7 @@ pub fn get_order_account_pubkey(
 
 #[cfg(test)]
 mod test {
-    use {super::*, solana_program_test::*};
+    use {super::*, solana_program::sysvar, solana_program_test::*, std::str::FromStr};
 
     #[tokio::test]
     async fn test_get_amounts() {
@@ -69,5 +69,17 @@ mod test {
             get_order_account_size(&String::from("test-6"), &String::from(""))
         );
         assert_eq!(424, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type")));
+    }
+
+    #[tokio::test]
+    async fn test_get_order_account_pubkey() {
+        assert_eq!(
+            Pubkey::from_str(&"2QaTeJJR9SYvzwZNbRFNpHhQZaxi3o35qb9qJAjBK2Rn").unwrap(),
+            get_order_account_pubkey(
+                &String::from("123456"),
+                &solana_program::system_program::id(),
+                &sysvar::clock::id()
+            )
+        );
     }
 }
