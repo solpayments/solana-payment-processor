@@ -83,6 +83,7 @@ pub fn express_checkout(
             AccountMeta::new(seller_token_account_pubkey, false),
             AccountMeta::new(buyer_token_account_pubkey, false),
             AccountMeta::new_readonly(mint_pubkey, false),
+            AccountMeta::new_readonly(spl_associated_token_account::id(), false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
             // AccountMeta::new_readonly(sysvar::clock::id(), false),

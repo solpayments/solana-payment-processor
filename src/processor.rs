@@ -127,6 +127,7 @@ pub fn process_express_checkout(
     let seller_token_info = next_account_info(account_info_iter)?;
     let buyer_token_info = next_account_info(account_info_iter)?;
     let mint_info = next_account_info(account_info_iter)?;
+    let associated_token_program_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
@@ -189,27 +190,9 @@ pub fn process_express_checkout(
     msg!("Creating merchant token account on chain...");
     let create_order_token_acc_ix = spl_associated_token_account::create_associated_token_account(
         signer_info.key,
-        order_info.key,
+        order_info.key, // the account that the associated account should be based on
         mint_info.key,
     );
-    // msg!("Oo: >>><<<< {:?}", create_order_token_acc_ix);
-    // msg!(
-    //     "seller_token_pubkey2: **************** {:?}",
-    //     seller_token_pubkey2
-    // );
-    // msg!("order_info: **************** {:?}", order_info.key);
-    // msg!(
-    //     "system_program_info: **************** {:?}",
-    //     system_program_info.key
-    // );
-    // msg!(
-    //     "token_program_info: **************** {:?}",
-    //     token_program_info.key
-    // );
-    // msg!(
-    //     "rent_sysvar_info: **************** {:?}",
-    //     rent_sysvar_info.key
-    // );
     invoke(
         &create_order_token_acc_ix,
         &[
@@ -220,6 +203,7 @@ pub fn process_express_checkout(
             system_program_info.clone(), // TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
             token_program_info.clone(), // TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA
             rent_sysvar_info.clone(), // SysvarRent111111111111111111111111111111111
+            associated_token_program_info.clone()
         ],
     )?;
     // let payer_token_info = next_account_info(account_info_iter)?;
