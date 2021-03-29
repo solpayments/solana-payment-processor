@@ -39,6 +39,7 @@ pub struct OrderAccount {
     pub modified: UnixTimestamp,
     pub merchant_pubkey: PublicKey,
     pub mint_pubkey: PublicKey, // represents the token/currency in use
+    pub token_pubkey: PublicKey, // represents the token account that holds the money
     pub payer_pubkey: PublicKey,
     pub expected_amount: u64,
     pub paid_amount: u64,
@@ -77,6 +78,7 @@ impl OrderAccount {
     pub const MIN_LEN: usize = size_of::<u8>()
         + size_of::<UnixTimestamp>()
         + size_of::<UnixTimestamp>()
+        + size_of::<PublicKey>()
         + size_of::<PublicKey>()
         + size_of::<PublicKey>()
         + size_of::<PublicKey>()
