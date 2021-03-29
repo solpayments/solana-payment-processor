@@ -95,9 +95,13 @@ pub fn express_checkout(
             AccountMeta::new_readonly(sysvar::clock::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
-        data: PaymentProcessorInstruction::ExpressCheckout { amount, order_id, secret }
-            .try_to_vec()
-            .unwrap(),
+        data: PaymentProcessorInstruction::ExpressCheckout {
+            amount,
+            order_id,
+            secret,
+        }
+        .try_to_vec()
+        .unwrap(),
     }
 }
 
@@ -106,8 +110,9 @@ mod test {
     use {
         super::*,
         crate::instruction::PaymentProcessorInstruction,
-        crate::processor::{MAX_SEED_LEN, MERCHANT},
+        crate::processor::MERCHANT,
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
+        crate::utils::get_order_account_pubkey,
         assert_matches::*,
         solana_program::{
             hash::Hash,
@@ -240,12 +245,7 @@ mod test {
         payer: &Keypair,
         recent_blockhash: Hash,
     ) -> (Pubkey, Pubkey) {
-        let order_acc_pubkey = match &order_id.get(..MAX_SEED_LEN) {
-            Some(substring) => {
-                Pubkey::create_with_seed(&payer.pubkey(), substring, &program_id).unwrap()
-            }
-            None => Pubkey::create_with_seed(&payer.pubkey(), &order_id, &program_id).unwrap(),
-        };
+        let order_acc_pubkey = get_order_account_pubkey(&order_id, &payer.pubkey(), program_id);
 
         let (seller_token_pubkey, _bump_seed) = Pubkey::find_program_address(
             &[

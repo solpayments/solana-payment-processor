@@ -2,7 +2,7 @@ use crate::{
     error::PaymentProcessorError,
     instruction::PaymentProcessorInstruction,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::{get_amounts, get_order_account_size},
+    utils::{get_amounts, get_order_account_size, get_order_account_pubkey},
 };
 use borsh::BorshDeserialize;
 use solana_program::program_pack::Pack;
@@ -26,8 +26,6 @@ use spl_token::{
 use std::convert::TryInto;
 
 pub const MERCHANT: &str = "merchant";
-/// maximum length of derived `Pubkey` seed
-pub const MAX_SEED_LEN: usize = 32;
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -159,12 +157,11 @@ pub fn process_express_checkout(
     }
 
     // assert that order account pubkey is correct
-    let address_with_seed = match &order_id.get(..MAX_SEED_LEN) {
-        Some(substring) => {
-            Pubkey::create_with_seed(signer_info.key, substring, &program_id).unwrap()
-        }
-        None => Pubkey::create_with_seed(signer_info.key, &order_id, &program_id).unwrap(),
-    };
+    let address_with_seed = get_order_account_pubkey(
+        &order_id,
+        signer_info.key,
+        program_id,
+    );
     if *order_info.key != address_with_seed {
         return Err(ProgramError::InvalidSeeds);
     }

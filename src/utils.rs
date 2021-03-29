@@ -1,5 +1,9 @@
 use crate::state::OrderAccount;
+use solana_program::pubkey::Pubkey;
 
+/// maximum length of derived `Pubkey` seed
+pub const MAX_SEED_LEN: usize = 32;
+/// transaction fee percentage
 const FEE: u64 = 3;
 
 /// Given the expected amount, calculate the fee and take home amount
@@ -24,6 +28,14 @@ pub fn get_amounts(amount: u64) -> (u64, u64) {
 /// get order account size
 pub fn get_order_account_size(order_id: &String, secret: &String) -> usize {
     return OrderAccount::MIN_LEN + order_id.chars().count() + 4 + secret.chars().count() + 4;
+}
+
+// Derive the order account pubkey
+pub fn get_order_account_pubkey(order_id: &String, wallet_pk: &Pubkey, program_id: &Pubkey) -> Pubkey {
+    match &order_id.get(..MAX_SEED_LEN) {
+        Some(substring) => Pubkey::create_with_seed(wallet_pk, substring, &program_id).unwrap(),
+        None => Pubkey::create_with_seed(wallet_pk, &order_id, &program_id).unwrap(),
+    }
 }
 
 #[cfg(test)]
