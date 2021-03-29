@@ -86,7 +86,7 @@ pub fn express_checkout(
             AccountMeta::new_readonly(spl_associated_token_account::id(), false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            // AccountMeta::new_readonly(sysvar::clock::id(), false),
+            AccountMeta::new_readonly(sysvar::clock::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
         data: PaymentProcessorInstruction::ExpressCheckout { amount, order_id }
@@ -184,17 +184,13 @@ mod test {
     async fn create_merchant_account() -> (Pubkey, Pubkey, BanksClient, Keypair, Hash) {
         let program_id = Pubkey::from_str(&"mosh111111111111111111111111111111111111111").unwrap();
 
-        let mut program_test = ProgramTest::new(
+        let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
             "sol_payment_processor",
             program_id,
             processor!(PaymentProcessorInstruction::process),
-        );
-        program_test.add_program(
-            "spl_associated_token_account",
-            spl_associated_token_account::id(),
-            processor!(spl_associated_token_account::processor::process_instruction),
-        );
-        let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+        )
+        .start()
+        .await;
 
         // first we create a public key for the merchant account
         let merchant_acc_pubkey =
@@ -225,13 +221,12 @@ mod test {
         amount: u64,
         program_id: &Pubkey,
         merchant_account_pubkey: &Pubkey,
-        // seller_token_pubkey: &Pubkey,
         buyer_token_pubkey: &Pubkey,
         mint_pubkey: &Pubkey,
         banks_client: &mut BanksClient,
-        payer: Keypair,
+        payer: &Keypair,
         recent_blockhash: Hash,
-    ) {
+    ) -> Pubkey {
         let order_acc_pubkey = match &order_id.get(..MAX_SEED_LEN) {
             Some(substring) => {
                 Pubkey::create_with_seed(&payer.pubkey(), substring, &program_id).unwrap()
@@ -243,8 +238,6 @@ mod test {
             &order_acc_pubkey,
             &mint_pubkey,
         );
-
-        println!("seller_token_pubkey: >>>> {:?}", seller_token_pubkey);
 
         // call express checkout ix
         let mut transaction = Transaction::new_with_payer(
@@ -261,8 +254,10 @@ mod test {
             )],
             Some(&payer.pubkey()),
         );
-        transaction.sign(&[&payer], recent_blockhash);
+        transaction.sign(&[payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+
+        order_acc_pubkey
     }
 
     #[tokio::test]
@@ -308,19 +303,8 @@ mod test {
 
         // next create token account for test
         let mint_keypair = Keypair::new();
-        // let seller_token_keypair = Keypair::new();
         let buyer_token_keypair = Keypair::new();
-        println!("payer: >>>> {:?}", payer.pubkey());
-        println!("mint_keypair: >>>> {:?}", mint_keypair.pubkey());
-        // println!("seller_token_pubkey: >>>> {:?}", seller_token_pubkey);
-        println!(
-            "merchant_account_pubkey: >>>> {:?}",
-            merchant_account_pubkey
-        );
-        println!(
-            "buyer_token_keypair: >>>> {:?}",
-            buyer_token_keypair.pubkey()
-        );
+
         // create and initialize mint
         assert_matches!(
             banks_client
@@ -333,20 +317,6 @@ mod test {
                 .await,
             Ok(())
         );
-        // create and initialize seller token account
-        // assert_matches!(
-        //     banks_client
-        //         .process_transaction(create_token_account_transaction(
-        //             &payer,
-        //             &mint_keypair,
-        //             recent_blockhash,
-        //             &seller_token_keypair,
-        //             &payer.pubkey(),
-        //             11,
-        //         ))
-        //         .await,
-        //     Ok(())
-        // );
         // create and initialize buyer token account
         assert_matches!(
             banks_client
@@ -362,137 +332,46 @@ mod test {
             Ok(())
         );
 
-        create_order_account(
+        let order_acc_pubkey = create_order_account(
             &order_id,
             amount,
             &program_id,
             &merchant_account_pubkey,
-            // &seller_token_pubkey,
             &buyer_token_keypair.pubkey(),
             &mint_keypair.pubkey(),
             &mut banks_client,
-            payer,
+            &payer,
             recent_blockhash,
         )
         .await;
 
-        // let merchant_result = create_order_account(
-        //     order_acc_pubkey,
-        //     merchant_acc_pubkey,
-        //     order_id,
-        //     amount,
-        //     program_id,
-        //     payer,
-        //     recent_blockhash,
-        //     &banks_client,
-        // )
-        // .await;
-        // let program_id = result.0;
-        // let merchant_account_pubkey = result.1;
-        // let mut banks_client = result.2;
-        // let payer = result.3;
-        // let recent_blockhash = result.4;
-
-        // let amount: u64 = 2000;
-        // let order_id = String::from("1337");
-        // let order_account_size = OrderAccount::MIN_LEN + order_id.chars().count() + 4;
-
-        // // first create order account
-        // let order_keypair = Keypair::new();
-        // let mut create_order_tx = Transaction::new_with_payer(
-        //     &[system_instruction::create_account(
-        //         &payer.pubkey(),
-        //         &order_keypair.pubkey(),
-        //         Rent::default().minimum_balance(order_account_size),
-        //         order_account_size as u64,
-        //         &program_id,
-        //     )],
-        //     Some(&payer.pubkey()),
-        // );
-        // create_order_tx.partial_sign(&[&order_keypair], recent_blockhash);
-        // create_order_tx.sign(&[&payer], recent_blockhash);
-        // assert_matches!(
-        //     banks_client.process_transaction(create_order_tx).await,
-        //     Ok(())
-        // );
-        // // next create token account for test
-        // let mint_keypair = Keypair::new();
-        // let token_keypair = Keypair::new();
-        // // create and initialize mint
-        // assert_matches!(
-        //     banks_client
-        //         .process_transaction(create_mint_transaction(
-        //             &payer,
-        //             &mint_keypair,
-        //             &payer,
-        //             recent_blockhash
-        //         ))
-        //         .await,
-        //     Ok(())
-        // );
-        // // create and initialize token account
-        // assert_matches!(
-        //     banks_client
-        //         .process_transaction(create_token_account_transaction(
-        //             &payer,
-        //             &mint_keypair,
-        //             recent_blockhash,
-        //             &token_keypair,
-        //             &payer.pubkey(),
-        //             2000,
-        //         ))
-        //         .await,
-        //     Ok(())
-        // );
-        // let associated_order_token_address = spl_associated_token_account::get_associated_token_address(
-        //     &order_keypair.pubkey(),
-        //     &mint_keypair.pubkey(),
-        // );
-        // // then call express checkout ix
-        // let mut transaction = Transaction::new_with_payer(
-        //     &[express_checkout(
-        //         program_id,
-        //         payer.pubkey(),
-        //         token_keypair.pubkey(),
-        //         order_keypair.pubkey(),
-        //         associated_order_token_address,
-        //         merchant_account_pubkey,
-        //         mint_keypair.pubkey(),
-        //         amount,
-        //         order_id,
-        //     )],
-        //     Some(&payer.pubkey()),
-        // );
-        // transaction.sign(&[&payer], recent_blockhash);
-        // assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-
-        // // test contents of order account
-        // let order_account = banks_client.get_account(order_keypair.pubkey()).await;
-        // let order_account = match order_account {
-        //     Ok(data) => match data {
-        //         None => panic!("Oo"),
-        //         Some(value) => value,
-        //     },
-        //     Err(error) => panic!("Problem: {:?}", error),
-        // };
-        // let order_data = OrderAccount::unpack(&order_account.data);
-        // let order_data = match order_data {
-        //     Ok(data) => data,
-        //     Err(error) => panic!("Problem: {:?}", error),
-        // };
-        // assert_eq!(true, order_data.is_initialized());
-        // assert_eq!(OrderStatus::Paid as u8, order_data.status);
-        // assert_eq!(
-        //     merchant_account_pubkey.to_bytes(),
-        //     order_data.merchant_pubkey
-        // );
-        // assert_eq!(mint_keypair.pubkey().to_bytes(), order_data.mint_pubkey);
-        // assert_eq!(merchant_account_pubkey.to_bytes(), order_data.mint_pubkey);
-        // assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
-        // assert_eq!(2000, order_data.expected_amount);
-        // assert_eq!(2000, order_data.paid_amount);
-        // assert_eq!(1994, order_data.take_home_amount);
-        // assert_eq!(6 + 1, order_data.fee_amount);
-        // assert_eq!(String::from("1337"), order_data.order_id);
+        // test contents of order account
+        let order_account = banks_client.get_account(order_acc_pubkey).await;
+        let order_account = match order_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        let order_data = OrderAccount::unpack(&order_account.data);
+        let order_data = match order_data {
+            Ok(data) => data,
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(true, order_data.is_initialized());
+        assert_eq!(OrderStatus::Paid as u8, order_data.status);
+        assert_eq!(
+            merchant_account_pubkey.to_bytes(),
+            order_data.merchant_pubkey
+        );
+        assert_eq!(mint_keypair.pubkey().to_bytes(), order_data.mint_pubkey);
+        assert_eq!(merchant_account_pubkey.to_bytes(), order_data.merchant_pubkey);
+        assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
+        assert_eq!(2000, order_data.expected_amount);
+        assert_eq!(2000, order_data.paid_amount);
+        assert_eq!(1994, order_data.take_home_amount);
+        assert_eq!(6, order_data.fee_amount);
+        assert_eq!(String::from("1337"), order_data.order_id);
     }
 }
