@@ -323,3 +323,100 @@ pub fn process_express_checkout(
 
     Ok(())
 }
+
+pub fn process_withdraw_payment(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let signer_info = next_account_info(account_info_iter)?;
+    let order_info = next_account_info(account_info_iter)?;
+    let merchant_info = next_account_info(account_info_iter)?;
+    let order_payment_token_info = next_account_info(account_info_iter)?;
+    let merchant_token_info = next_account_info(account_info_iter)?;
+    let program_owner_token_info = next_account_info(account_info_iter)?;
+    let token_program_info = next_account_info(account_info_iter)?;
+
+    // ensure signer can sign
+    if !signer_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    // ensure merchant and order account is owned by this program
+    if *merchant_info.owner != *program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if *order_info.owner != *program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // ensure buyer token account is owned by token program
+    if *merchant_token_info.owner != spl_token::id() {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // get the merchant account
+    let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
+    if !merchant_account.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    // ensure signer owns this merchant account
+    if signer_info.key.to_bytes() != merchant_account.merchant_pubkey {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    // get the order account
+    let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
+    if !order_account.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    // ensure order belongs to this merchant
+    if merchant_info.key.to_bytes() != order_account.merchant_pubkey {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    // ensure the order payment token account is the right one
+    if order_payment_token_info.key.to_bytes() != order_account.token_pubkey {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    // ensure order is not already paid out
+    if order_account.status != OrderStatus::Paid as u8 {
+        return Err(PaymentProcessorError::AlreadyWithdrawn.into());
+    }
+    // transfer amount less fees to merchant
+    let (associated_token_address, bump_seed) = Pubkey::find_program_address(
+        &[
+            &order_info.key.to_bytes(),
+            &spl_token::id().to_bytes(),
+            &order_account.mint_pubkey,
+        ],
+        program_id,
+    );
+    // assert that the derived address matches the one supplied
+    if associated_token_address != *order_payment_token_info.key {
+        msg!("Error: Associated address does not match seed derivation");
+        return Err(ProgramError::InvalidSeeds);
+    }
+    // get signer seeds
+    let associated_token_account_signer_seeds: &[&[_]] = &[
+        &order_info.key.to_bytes(),
+        &spl_token::id().to_bytes(),
+        &order_account.mint_pubkey,
+        &[bump_seed],
+    ];
+    let transfer_to_merchant_ix = spl_token::instruction::transfer(
+        token_program_info.key,
+        order_payment_token_info.key,
+        merchant_token_info.key,
+        &order_payment_token_info.key,
+        &[&order_payment_token_info.key],
+        order_account.take_home_amount,
+    )?;
+    msg!("Transferring payment to the merchant...");
+    invoke(
+        &transfer_to_merchant_ix,
+        &[
+            order_payment_token_info.clone(),
+            merchant_token_info.clone(),
+            order_payment_token_info.clone(),
+            token_program_info.clone(),
+        ],
+    )?;
+
+    Ok(())
+}
