@@ -14,6 +14,9 @@ pub enum PaymentProcessorError {
     /// Seller And Buyer Mints Not The Same
     #[error("Seller And Buyer Mints Not The Same")]
     MintNotEqual,
+    /// The Amount Is Already Withdrawn
+    #[error("The Amount Is Already Withdrawn")]
+    AlreadyWithdrawn,
 }
 
 impl From<PaymentProcessorError> for ProgramError {
@@ -37,6 +40,9 @@ impl PrintProgramError for PaymentProcessorError {
             PaymentProcessorError::InvalidInstruction => msg!("Error: Invalid Instruction"),
             PaymentProcessorError::MintNotEqual => {
                 msg!("Error: Seller And Buyer Mints Not The Same")
+            },
+            PaymentProcessorError::AlreadyWithdrawn => {
+                msg!("Error: The Amount Is Already Withdrawn")
             }
         }
     }
