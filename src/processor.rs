@@ -75,19 +75,18 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
     if *merchant_info.key != address_with_seed {
         return Err(ProgramError::InvalidSeeds);
     }
-    // try create merchant account
-    let create_account_ix = system_instruction::create_account_with_seed(
-        signer_info.key,
-        merchant_info.key,
-        signer_info.key,
-        MERCHANT,
-        Rent::default().minimum_balance(MerchantAccount::LEN),
-        MerchantAccount::LEN.try_into().unwrap(),
-        program_id,
-    );
+    // create merchant account
     msg!("Creating merchant account on chain...");
     invoke(
-        &create_account_ix,
+        &system_instruction::create_account_with_seed(
+            signer_info.key,
+            merchant_info.key,
+            signer_info.key,
+            MERCHANT,
+            Rent::default().minimum_balance(MerchantAccount::LEN),
+            MerchantAccount::LEN.try_into().unwrap(),
+            program_id,
+        ),
         &[
             signer_info.clone(),
             merchant_info.clone(),
@@ -175,18 +174,17 @@ pub fn process_express_checkout(
     }
     // create order account
     let order_account_size = get_order_account_size(&order_id, &secret);
-    let create_account_ix = system_instruction::create_account_with_seed(
-        signer_info.key,
-        order_info.key,
-        signer_info.key,
-        &order_id,
-        Rent::default().minimum_balance(order_account_size),
-        order_account_size as u64,
-        program_id,
-    );
     msg!("Creating order account on chain...");
     invoke(
-        &create_account_ix,
+        &system_instruction::create_account_with_seed(
+            signer_info.key,
+            order_info.key,
+            signer_info.key,
+            &order_id,
+            Rent::default().minimum_balance(order_account_size),
+            order_account_size as u64,
+            program_id,
+        ),
         &[
             signer_info.clone(),
             order_info.clone(),
@@ -272,16 +270,16 @@ pub fn process_express_checkout(
     )?;
 
     msg!("Transfer payment amount to associated seller token account...");
-    let transfer_amount_ix = spl_token::instruction::transfer(
-        token_program_info.key,
-        buyer_token_info.key,
-        seller_token_info.key,
-        signer_info.key,
-        &[&signer_info.key],
-        amount,
-    )?;
     invoke(
-        &transfer_amount_ix,
+        &spl_token::instruction::transfer(
+            token_program_info.key,
+            buyer_token_info.key,
+            seller_token_info.key,
+            signer_info.key,
+            &[&signer_info.key],
+            amount,
+        )
+        .unwrap(),
         &[
             buyer_token_info.clone(),
             seller_token_info.clone(),
