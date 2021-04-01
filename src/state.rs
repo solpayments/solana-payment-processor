@@ -22,7 +22,7 @@ pub trait Serdes: Sized + BorshSerialize + BorshDeserialize {
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct MerchantAccount {
     pub is_initialized: bool,
-    pub merchant_pubkey: PublicKey,
+    pub owner_pubkey: PublicKey,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]

@@ -321,6 +321,7 @@ mod test {
         let program_id = result.0;
         let merchant_pubkey = result.1;
         let mut banks_client = result.2;
+        let payer = result.3;
         // test contents of merchant account
         let merchant_account = banks_client.get_account(merchant_pubkey).await;
         let merchant_account = match merchant_account {
@@ -338,10 +339,9 @@ mod test {
         };
         assert_eq!(true, merchant_data.is_initialized);
         assert_eq!(
-            merchant_pubkey,
-            Pubkey::new_from_array(merchant_data.merchant_pubkey)
+            payer.pubkey(),
+            Pubkey::new_from_array(merchant_data.owner_pubkey)
         );
-        assert_eq!(merchant_pubkey.to_bytes(), merchant_data.merchant_pubkey);
     }
 
     #[tokio::test]
@@ -453,7 +453,6 @@ mod test {
         let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
         assert_eq!(2000, seller_account_data.amount);
         assert_eq!(pda, seller_account_data.owner);
-        // assert_eq!(order_acc_pubkey, seller_account_data.owner);
         assert_eq!(mint_keypair.pubkey(), seller_account_data.mint);
 
         ////////////////////////////////////////////

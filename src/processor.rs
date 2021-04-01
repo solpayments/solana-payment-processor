@@ -110,7 +110,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
     // create the MerchantAccount object
     msg!("Saving merchant account information...");
     merchant_account.is_initialized = true;
-    merchant_account.merchant_pubkey = merchant_info.key.to_bytes();
+    merchant_account.owner_pubkey = signer_info.key.to_bytes();
     MerchantAccount::pack(&merchant_account, &mut merchant_info.data.borrow_mut());
 
     Ok(())
@@ -360,22 +360,9 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         return Err(ProgramError::UninitializedAccount);
     }
     // ensure signer owns this merchant account
-    // Get mint details and verify that they match token account
-    let merchant_token_data = TokenAccount::unpack(&merchant_token_info.data.borrow())?;
-    // msg!("merchant_account: {:?}", merchant_account);
-    // msg!("merchant_token_info: {:?}", merchant_token_info);
-    // msg!("merchant_token_data: {:?}", merchant_token_data);
-    msg!("merchant_pubkey: {:?}", Pubkey::new_from_array(merchant_account.merchant_pubkey));
-    msg!("signer_info.key: {:?}", signer_info.key);
-    // if Pubkey::new_from_array(merchant_account.merchant_pubkey) != merchant_token_data.owner  {
-    //     return Err(ProgramError::AccountDataTooSmall);
-    // }
-    if signer_info.key.to_bytes() != merchant_account.merchant_pubkey {
+    if signer_info.key.to_bytes() != merchant_account.owner_pubkey {
         return Err(ProgramError::InvalidAccountData);
     }
-
-    // ^^ fails
-
     // get the order account
     let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
     if !order_account.is_initialized() {
