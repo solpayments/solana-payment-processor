@@ -475,7 +475,7 @@ mod test {
                     recent_blockhash,
                     &merchant_token_keypair,
                     &payer.pubkey(),
-                    2000000,
+                    99,
                 ))
                 .await,
             Ok(())
@@ -502,12 +502,39 @@ mod test {
             )],
             Some(&payer.pubkey()),
         );
-        println!("payer: {:?}", payer.pubkey());
-        println!("order_acc_pubkey: {:?}", order_acc_pubkey);
-        println!("merchant_account_pubkey: {:?}", merchant_account_pubkey);
-        println!("order_payment_token_acc_pubkey: {:?}", order_payment_token_acc_pubkey);
-        println!("pda: {:?}", pda);
         transaction.sign(&[&payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+
+        // test contents of order account
+        let order_account = banks_client.get_account(order_acc_pubkey).await;
+        let order_account = match order_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        let order_data = OrderAccount::unpack(&order_account.data);
+        let order_data = match order_data {
+            Ok(data) => data,
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
+
+        // test contents of merchant token account
+        let merchant_token_account = banks_client.get_account(merchant_token_keypair.pubkey()).await;
+        let merchant_token_account = match merchant_token_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        let merchant_account_data = spl_token::state::Account::unpack(&merchant_token_account.data);
+        let merchant_account_data = match merchant_account_data {
+            Ok(data) => data,
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(order_data.take_home_amount + 99, merchant_account_data.amount);
     }
 }
