@@ -17,6 +17,9 @@ pub enum PaymentProcessorError {
     /// The Amount Is Already Withdrawn
     #[error("The Amount Is Already Withdrawn")]
     AlreadyWithdrawn,
+    /// The Provided Merchant Is Wrong
+    #[error("The Provided Merchant Is Wrong")]
+    WrongMerchant,
 }
 
 impl From<PaymentProcessorError> for ProgramError {
@@ -43,6 +46,9 @@ impl PrintProgramError for PaymentProcessorError {
             },
             PaymentProcessorError::AlreadyWithdrawn => {
                 msg!("Error: The Amount Is Already Withdrawn")
+            }
+            PaymentProcessorError::WrongMerchant => {
+                msg!("Error: The Provided Merchant Is Wrong")
             }
         }
     }

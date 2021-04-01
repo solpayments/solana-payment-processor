@@ -359,9 +359,12 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
-    // ensure signer owns this merchant account
-    if signer_info.key.to_bytes() != merchant_account.owner_pubkey {
-        return Err(ProgramError::InvalidAccountData);
+    // ensure that the token account that we will withdraw to is owned by this
+    // merchant.  This ensures that anyone can call the withdraw instruction
+    // and the money will still go to the right place
+    let merchant_token_data = TokenAccount::unpack(&merchant_token_info.data.borrow())?;
+    if merchant_token_data.owner != Pubkey::new_from_array(merchant_account.owner_pubkey) {
+        return Err(PaymentProcessorError::WrongMerchant.into());
     }
     // get the order account
     let mut order_account = OrderAccount::unpack(&order_info.data.borrow())?;
