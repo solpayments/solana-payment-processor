@@ -46,6 +46,12 @@ pub enum PaymentProcessorInstruction {
         #[allow(dead_code)] // not dead code..
         secret: String,
     },
+    /// Express Checkout - create order and pay for it in one transaction
+    ///
+    /// Accounts expected:
+    ///
+    /// 0. `[signer]` The account of the person initializing the transaction
+    Withdraw,
 }
 
 /// Creates an 'RegisterMerchant' instruction.
@@ -77,6 +83,7 @@ pub fn express_checkout(
     seller_token_account_pubkey: Pubkey,
     buyer_token_account_pubkey: Pubkey,
     mint_pubkey: Pubkey,
+    pda: Pubkey,
     amount: u64,
     order_id: String,
     secret: String,
@@ -90,6 +97,7 @@ pub fn express_checkout(
             AccountMeta::new(seller_token_account_pubkey, false),
             AccountMeta::new(buyer_token_account_pubkey, false),
             AccountMeta::new_readonly(mint_pubkey, false),
+            AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
@@ -105,12 +113,39 @@ pub fn express_checkout(
     }
 }
 
+/// Creates an 'Withdraw' instruction.
+pub fn withdraw(
+    program_id: Pubkey,
+    signer_pubkey: Pubkey,
+    order_acc_pubkey: Pubkey,
+    merchant_acc_pubkey: Pubkey,
+    order_payment_token_acc_pubkey: Pubkey,
+    merchant_token_acc_pubkey: Pubkey,
+    pda: Pubkey,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(signer_pubkey, true),
+            AccountMeta::new(order_acc_pubkey, false),
+            AccountMeta::new_readonly(merchant_acc_pubkey, false),
+            AccountMeta::new(order_payment_token_acc_pubkey, false),
+            AccountMeta::new(merchant_token_acc_pubkey, false),
+            AccountMeta::new_readonly(pda, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+        ],
+        data: PaymentProcessorInstruction::Withdraw
+            .try_to_vec()
+            .unwrap(),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use {
         super::*,
         crate::instruction::PaymentProcessorInstruction,
-        crate::processor::MERCHANT,
+        crate::processor::{MERCHANT, PDA_SEED},
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         crate::utils::get_order_account_pubkey,
         assert_matches::*,
@@ -246,6 +281,7 @@ mod test {
         recent_blockhash: Hash,
     ) -> (Pubkey, Pubkey) {
         let order_acc_pubkey = get_order_account_pubkey(&order_id, &payer.pubkey(), program_id);
+        let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
 
         let (seller_token_pubkey, _bump_seed) = Pubkey::find_program_address(
             &[
@@ -266,6 +302,7 @@ mod test {
                 seller_token_pubkey,
                 *buyer_token_pubkey,
                 *mint_pubkey,
+                pda,
                 amount,
                 (&order_id).to_string(),
                 (&secret).to_string(),
@@ -413,8 +450,57 @@ mod test {
             Ok(data) => data,
             Err(error) => panic!("Problem: {:?}", error),
         };
+        let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
         assert_eq!(2000, seller_account_data.amount);
-        assert_eq!(order_acc_pubkey, seller_account_data.owner);
+        assert_eq!(pda, seller_account_data.owner);
+        // assert_eq!(order_acc_pubkey, seller_account_data.owner);
         assert_eq!(mint_keypair.pubkey(), seller_account_data.mint);
+
+        ////////////////////////////////////////////
+        ////////////////////////////////////////////
+        let merchant_token_keypair = Keypair::new();
+        // create and initialize merchant token account
+        assert_matches!(
+            banks_client
+                .process_transaction(create_token_account_transaction(
+                    &payer,
+                    &mint_keypair,
+                    recent_blockhash,
+                    &merchant_token_keypair,
+                    &payer.pubkey(),
+                    2000000,
+                ))
+                .await,
+            Ok(())
+        );
+        let (order_payment_token_acc_pubkey, _bump_seed) = Pubkey::find_program_address(
+            &[
+                &order_acc_pubkey.to_bytes(),
+                &spl_token::id().to_bytes(),
+                &mint_keypair.pubkey().to_bytes(),
+            ],
+            &program_id,
+        );
+
+        // call withdraw ix
+        let mut transaction = Transaction::new_with_payer(
+            &[withdraw(
+                program_id,
+                payer.pubkey(),
+                order_acc_pubkey,
+                merchant_account_pubkey,
+                order_payment_token_acc_pubkey,
+                merchant_token_keypair.pubkey(),
+                pda,
+            )],
+            Some(&payer.pubkey()),
+        );
+        println!("payer: {:?}", payer.pubkey());
+        println!("order_acc_pubkey: {:?}", order_acc_pubkey);
+        println!("merchant_account_pubkey: {:?}", merchant_account_pubkey);
+        println!("order_payment_token_acc_pubkey: {:?}", order_payment_token_acc_pubkey);
+        println!("pda: {:?}", pda);
+        transaction.sign(&[&payer], recent_blockhash);
+        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
     }
 }
