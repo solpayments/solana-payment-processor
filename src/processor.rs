@@ -330,9 +330,11 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let merchant_info = next_account_info(account_info_iter)?;
     let order_payment_token_info = next_account_info(account_info_iter)?;
     let merchant_token_info = next_account_info(account_info_iter)?;
-    // let program_owner_token_info = next_account_info(account_info_iter)?;
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
+    let clock_sysvar_info = next_account_info(account_info_iter)?;
+
+    let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
 
     // ensure signer can sign
     if !signer_info.is_signer {
@@ -364,7 +366,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         return Err(ProgramError::InvalidAccountData);
     }
     // get the order account
-    let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
+    let mut order_account = OrderAccount::unpack(&order_info.data.borrow())?;
     if !order_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
@@ -414,6 +416,12 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         ],
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
+
+    // update the order account data
+    msg!("Updating order account information...");
+    order_account.status = OrderStatus::Withdrawn as u8;
+    order_account.modified = *timestamp;
+    OrderAccount::pack(&order_account, &mut order_info.data.borrow_mut());
 
     Ok(())
 }

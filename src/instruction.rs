@@ -51,6 +51,13 @@ pub enum PaymentProcessorInstruction {
     /// Accounts expected:
     ///
     /// 0. `[signer]` The account of the person initializing the transaction
+    /// 1. `[writable]` The order account.  Owned by this program
+    /// 2. `[]` The merchant account.  Owned by this program
+    /// 3. `[writable]` The order token account (where the money was put during payment)
+    /// 4. `[writable]` The merchant token account (where we will withdraw to)
+    /// 5. `[]` The sol-payment-processor program derived address
+    /// 6. `[]` The token program
+    /// 7. `[]` The clock sysvar
     Withdraw,
 }
 
@@ -133,6 +140,7 @@ pub fn withdraw(
             AccountMeta::new(merchant_token_acc_pubkey, false),
             AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(sysvar::clock::id(), false),
         ],
         data: PaymentProcessorInstruction::Withdraw
             .try_to_vec()
