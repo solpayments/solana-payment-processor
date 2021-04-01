@@ -51,7 +51,7 @@ impl PaymentProcessorInstruction {
                 msg!("Instruction: Withdraw");
                 process_withdraw_payment(program_id, accounts)
             }
-            _ => Err(ProgramError::InvalidInstructionData),
+            // _ => Err(ProgramError::InvalidInstructionData),
         }
     }
 }
