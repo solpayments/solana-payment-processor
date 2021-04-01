@@ -403,7 +403,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
             merchant_token_info.key,
             &pda,
             &[&pda],
-            1,
+            order_account.take_home_amount,
         )
         .unwrap(),
         &[
