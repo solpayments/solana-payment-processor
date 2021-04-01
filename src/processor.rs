@@ -2,7 +2,7 @@ use crate::{
     error::PaymentProcessorError,
     instruction::PaymentProcessorInstruction,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::{get_amounts, get_order_account_size, get_order_account_pubkey},
+    utils::{get_amounts, get_order_account_pubkey, get_order_account_size},
 };
 use borsh::BorshDeserialize;
 use solana_program::program_pack::Pack;
@@ -19,13 +19,11 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 // use spl_associated_token_account;
-use spl_token::{
-    self,
-    state::{Account as TokenAccount},
-};
+use spl_token::{self, state::Account as TokenAccount};
 use std::convert::TryInto;
 
 pub const MERCHANT: &str = "merchant";
+pub const PDA_SEED: &[u8] = b"sol_payment_processor";
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -41,9 +39,17 @@ impl PaymentProcessorInstruction {
                 msg!("Instruction: RegisterMerchant");
                 process_register_merchant(program_id, accounts)
             }
-            PaymentProcessorInstruction::ExpressCheckout { amount, order_id, secret } => {
+            PaymentProcessorInstruction::ExpressCheckout {
+                amount,
+                order_id,
+                secret,
+            } => {
                 msg!("Instruction: ExpressCheckout");
                 process_express_checkout(program_id, accounts, amount, order_id, secret)
+            }
+            PaymentProcessorInstruction::Withdraw => {
+                msg!("Instruction: Withdraw");
+                process_withdraw_payment(program_id, accounts)
             }
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -125,6 +131,7 @@ pub fn process_express_checkout(
     let seller_token_info = next_account_info(account_info_iter)?;
     let buyer_token_info = next_account_info(account_info_iter)?;
     let mint_info = next_account_info(account_info_iter)?;
+    let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
     let clock_sysvar_info = next_account_info(account_info_iter)?;
@@ -155,13 +162,14 @@ pub fn process_express_checkout(
     if *mint_info.key != buyer_token_data.mint {
         return Err(PaymentProcessorError::MintNotEqual.into());
     }
+    // check that provided pda is correct
+    let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
+    if pda_info.key != &pda {
+        return Err(ProgramError::InvalidSeeds);
+    }
 
     // assert that order account pubkey is correct
-    let address_with_seed = get_order_account_pubkey(
-        &order_id,
-        signer_info.key,
-        program_id,
-    );
+    let address_with_seed = get_order_account_pubkey(&order_id, signer_info.key, program_id);
     if *order_info.key != address_with_seed {
         return Err(ProgramError::InvalidSeeds);
     }
@@ -236,23 +244,14 @@ pub fn process_express_checkout(
     }
     msg!("Allocate space for the associated seller token account");
     invoke_signed(
-        &system_instruction::allocate(
-            seller_token_info.key,
-            spl_token::state::Account::LEN as u64,
-        ),
-        &[
-            seller_token_info.clone(),
-            system_program_info.clone(),
-        ],
+        &system_instruction::allocate(seller_token_info.key, spl_token::state::Account::LEN as u64),
+        &[seller_token_info.clone(), system_program_info.clone()],
         &[&associated_token_account_signer_seeds],
     )?;
     msg!("Assign the associated seller token account to the SPL Token program");
     invoke_signed(
         &system_instruction::assign(seller_token_info.key, &spl_token::id()),
-        &[
-            seller_token_info.clone(),
-            system_program_info.clone(),
-        ],
+        &[seller_token_info.clone(), system_program_info.clone()],
         &[&associated_token_account_signer_seeds],
     )?;
     msg!("Initialize the associated seller token account");
@@ -261,12 +260,12 @@ pub fn process_express_checkout(
             &spl_token::id(),
             seller_token_info.key,
             mint_info.key,
-            order_info.key,
+            pda_info.key,
         )?,
         &[
             seller_token_info.clone(),
             mint_info.clone(),
-            order_info.clone(),
+            pda_info.clone(),
             rent_sysvar_info.clone(),
             token_program_info.clone(),
         ],
@@ -324,17 +323,15 @@ pub fn process_express_checkout(
     Ok(())
 }
 
-pub fn process_withdraw_payment(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-) -> ProgramResult {
+pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let signer_info = next_account_info(account_info_iter)?;
     let order_info = next_account_info(account_info_iter)?;
     let merchant_info = next_account_info(account_info_iter)?;
     let order_payment_token_info = next_account_info(account_info_iter)?;
     let merchant_token_info = next_account_info(account_info_iter)?;
-    let program_owner_token_info = next_account_info(account_info_iter)?;
+    // let program_owner_token_info = next_account_info(account_info_iter)?;
+    let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
 
     // ensure signer can sign
@@ -352,15 +349,33 @@ pub fn process_withdraw_payment(
     if *merchant_token_info.owner != spl_token::id() {
         return Err(ProgramError::IncorrectProgramId);
     }
+    // check that provided pda is correct
+    let (pda, pda_nonce) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
+    if pda_info.key != &pda {
+        return Err(ProgramError::InvalidSeeds);
+    }
     // get the merchant account
     let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
     // ensure signer owns this merchant account
+    // Get mint details and verify that they match token account
+    let merchant_token_data = TokenAccount::unpack(&merchant_token_info.data.borrow())?;
+    // msg!("merchant_account: {:?}", merchant_account);
+    // msg!("merchant_token_info: {:?}", merchant_token_info);
+    // msg!("merchant_token_data: {:?}", merchant_token_data);
+    msg!("merchant_pubkey: {:?}", Pubkey::new_from_array(merchant_account.merchant_pubkey));
+    msg!("signer_info.key: {:?}", signer_info.key);
+    // if Pubkey::new_from_array(merchant_account.merchant_pubkey) != merchant_token_data.owner  {
+    //     return Err(ProgramError::AccountDataTooSmall);
+    // }
     if signer_info.key.to_bytes() != merchant_account.merchant_pubkey {
         return Err(ProgramError::InvalidAccountData);
     }
+
+    // ^^ fails
+
     // get the order account
     let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
     if !order_account.is_initialized() {
@@ -379,7 +394,7 @@ pub fn process_withdraw_payment(
         return Err(PaymentProcessorError::AlreadyWithdrawn.into());
     }
     // transfer amount less fees to merchant
-    let (associated_token_address, bump_seed) = Pubkey::find_program_address(
+    let (associated_token_address, _bump_seed) = Pubkey::find_program_address(
         &[
             &order_info.key.to_bytes(),
             &spl_token::id().to_bytes(),
@@ -392,30 +407,25 @@ pub fn process_withdraw_payment(
         msg!("Error: Associated address does not match seed derivation");
         return Err(ProgramError::InvalidSeeds);
     }
-    // get signer seeds
-    let associated_token_account_signer_seeds: &[&[_]] = &[
-        &order_info.key.to_bytes(),
-        &spl_token::id().to_bytes(),
-        &order_account.mint_pubkey,
-        &[bump_seed],
-    ];
-    let transfer_to_merchant_ix = spl_token::instruction::transfer(
-        token_program_info.key,
-        order_payment_token_info.key,
-        merchant_token_info.key,
-        &order_payment_token_info.key,
-        &[&order_payment_token_info.key],
-        order_account.take_home_amount,
-    )?;
+
     msg!("Transferring payment to the merchant...");
-    invoke(
-        &transfer_to_merchant_ix,
+    invoke_signed(
+        &spl_token::instruction::transfer(
+            token_program_info.key,
+            order_payment_token_info.key,
+            merchant_token_info.key,
+            &pda,
+            &[&pda],
+            1,
+        )
+        .unwrap(),
         &[
+            token_program_info.clone(),
+            pda_info.clone(),
             order_payment_token_info.clone(),
             merchant_token_info.clone(),
-            order_payment_token_info.clone(),
-            token_program_info.clone(),
         ],
+        &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
 
     Ok(())
