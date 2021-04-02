@@ -22,6 +22,9 @@ pub enum PaymentProcessorError {
     /// The Provided Merchant Is Wrong
     #[error("Error: The Provided Merchant Is Wrong")]
     WrongMerchant,
+    /// The Provided Program Owner Is Wrong
+    #[error("Error: The Provided Program Owner Is Wrong")]
+    WrongProgramOwner,
 }
 
 impl From<PaymentProcessorError> for ProgramError {
