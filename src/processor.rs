@@ -2,7 +2,7 @@ use crate::{
     error::PaymentProcessorError,
     instruction::PaymentProcessorInstruction,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::{get_amounts, get_order_account_pubkey, get_order_account_size},
+    utils::{get_amounts, get_order_account_pubkey, get_order_account_size, FEE, SPONSOR_FEE},
 };
 use borsh::BorshDeserialize;
 use solana_program::program_pack::Pack;
@@ -295,7 +295,7 @@ pub fn process_express_checkout(
     )?;
 
     // Get fee and take home amount
-    let (take_home_amount, fee_amount) = get_amounts(amount);
+    let (take_home_amount, fee_amount) = get_amounts(amount, FEE);
 
     // get the order account
     // TODO: ensure this account is not already initialized
@@ -335,6 +335,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let order_payment_token_info = next_account_info(account_info_iter)?;
     let merchant_token_info = next_account_info(account_info_iter)?;
     let program_owner_token_info = next_account_info(account_info_iter)?;
+    let sponsor_token_info = next_account_info(account_info_iter)?;
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
     let clock_sysvar_info = next_account_info(account_info_iter)?;
@@ -377,6 +378,11 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let merchant_token_data = TokenAccount::unpack(&merchant_token_info.data.borrow())?;
     if merchant_token_data.owner != Pubkey::new_from_array(merchant_account.owner_pubkey) {
         return Err(PaymentProcessorError::WrongMerchant.into());
+    }
+    // check that the provided sponsor is correct
+    let sponsor_token_data = TokenAccount::unpack(&sponsor_token_info.data.borrow())?;
+    if sponsor_token_data.owner != Pubkey::new_from_array(merchant_account.sponsor_pubkey) {
+        return Err(PaymentProcessorError::WrongSponsor.into());
     }
     // get the order account
     let mut order_account = OrderAccount::unpack(&order_info.data.borrow())?;
@@ -429,11 +435,11 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         ],
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
-    msg!("Transferring processing fee to the program owner...");
     if Pubkey::new_from_array(merchant_account.sponsor_pubkey)
         == Pubkey::from_str(PROGRAM_OWNER).unwrap()
     {
         // this means there is no third-party sponsor to pay
+        msg!("Transferring processing fee to the program owner...");
         invoke_signed(
             &spl_token::instruction::transfer(
                 token_program_info.key,
@@ -449,6 +455,46 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
                 pda_info.clone(),
                 order_payment_token_info.clone(),
                 program_owner_token_info.clone(),
+            ],
+            &[&[&PDA_SEED, &[pda_nonce]]],
+        )?;
+    } else {
+        // we need to pay both the program owner and the sponsor
+        let (program_owner_fee, sponsor_fee) = get_amounts(order_account.fee_amount, SPONSOR_FEE);
+        msg!("Transferring processing fee to the program owner and sponsor...");
+        invoke_signed(
+            &spl_token::instruction::transfer(
+                token_program_info.key,
+                order_payment_token_info.key,
+                program_owner_token_info.key,
+                &pda,
+                &[&pda],
+                program_owner_fee,
+            )
+            .unwrap(),
+            &[
+                token_program_info.clone(),
+                pda_info.clone(),
+                order_payment_token_info.clone(),
+                program_owner_token_info.clone(),
+            ],
+            &[&[&PDA_SEED, &[pda_nonce]]],
+        )?;
+        invoke_signed(
+            &spl_token::instruction::transfer(
+                token_program_info.key,
+                order_payment_token_info.key,
+                sponsor_token_info.key,
+                &pda,
+                &[&pda],
+                sponsor_fee,
+            )
+            .unwrap(),
+            &[
+                token_program_info.clone(),
+                pda_info.clone(),
+                order_payment_token_info.clone(),
+                sponsor_token_info.clone(),
             ],
             &[&[&PDA_SEED, &[pda_nonce]]],
         )?;
