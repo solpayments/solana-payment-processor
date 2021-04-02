@@ -362,7 +362,7 @@ mod test {
                     recent_blockhash,
                     &buyer_token_keypair,
                     &payer.pubkey(),
-                    2000000,
+                    amount + 2000000,
                 ))
                 .await,
             Ok(())
@@ -488,7 +488,7 @@ mod test {
     async fn test_withdraw() {
         let mut merchant_result = create_merchant_account().await;
         let merchant_token_keypair = Keypair::new();
-        let amount: u64 = 2000;
+        let amount: u64 = 1234567890;
         let order_id = String::from("PD17CUSZ75");
         let secret = String::from("i love oov");
         let (order_acc_pubkey, _seller_account_pubkey, mint_keypair) =
@@ -523,8 +523,7 @@ mod test {
             &program_id,
         );
 
-        let program_owner_pk =
-            Pubkey::from_str(PROGRAM_OWNER).unwrap();
+        let program_owner_pk = Pubkey::from_str(PROGRAM_OWNER).unwrap();
         let program_owner_token_pubkey = spl_associated_token_account::get_associated_token_address(
             &program_owner_pk,
             &mint_keypair.pubkey(),
@@ -576,6 +575,12 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
+        assert_eq!(amount, order_data.expected_amount);
+        assert_eq!(amount, order_data.paid_amount);
+        assert_eq!(order_id, order_data.order_id);
+        assert_eq!(secret, order_data.secret);
+        assert_eq!(1230864187, order_data.take_home_amount);
+        assert_eq!(3703703, order_data.fee_amount);
 
         // test contents of merchant token account
         let merchant_token_account = banks_client
