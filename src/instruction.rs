@@ -449,6 +449,7 @@ mod test {
             },
             Err(error) => panic!("Problem: {:?}", error),
         };
+        assert_eq!(order_account.owner, program_id);
         let order_data = OrderAccount::unpack(&order_account.data);
         let order_data = match order_data {
             Ok(data) => data,
@@ -573,16 +574,14 @@ mod test {
 
         // test contents of order account
         let order_account = banks_client.get_account(order_acc_pubkey).await;
-        let order_account = match order_account {
+        let order_data = match order_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
-                Some(value) => value,
+                Some(value) => match OrderAccount::unpack(&value.data) {
+                    Ok(data) => data,
+                    Err(error) => panic!("Problem: {:?}", error),
+                },
             },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        let order_data = OrderAccount::unpack(&order_account.data);
-        let order_data = match order_data {
-            Ok(data) => data,
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
@@ -597,16 +596,14 @@ mod test {
         let merchant_token_account = banks_client
             .get_account(merchant_token_keypair.pubkey())
             .await;
-        let merchant_token_account = match merchant_token_account {
+        let merchant_account_data = match merchant_token_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
-                Some(value) => value,
+                Some(value) => match spl_token::state::Account::unpack(&value.data) {
+                    Ok(data) => data,
+                    Err(error) => panic!("Problem: {:?}", error),
+                },
             },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        let merchant_account_data = spl_token::state::Account::unpack(&merchant_token_account.data);
-        let merchant_account_data = match merchant_account_data {
-            Ok(data) => data,
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(
@@ -617,17 +614,14 @@ mod test {
         // test contents of program owner token account
         let program_owner_token_account =
             banks_client.get_account(program_owner_token_pubkey).await;
-        let program_owner_token_account = match program_owner_token_account {
+        let program_owner_account_data = match program_owner_token_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
-                Some(value) => value,
+                Some(value) => match spl_token::state::Account::unpack(&value.data) {
+                    Ok(data) => data,
+                    Err(error) => panic!("Problem: {:?}", error),
+                },
             },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        let program_owner_account_data =
-            spl_token::state::Account::unpack(&program_owner_token_account.data);
-        let program_owner_account_data = match program_owner_account_data {
-            Ok(data) => data,
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(order_data.fee_amount, program_owner_account_data.amount);
@@ -735,7 +729,6 @@ mod test {
 
         // test contents of order account
         let order_account = banks_client.get_account(order_acc_pubkey).await;
-
         let order_data = match order_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
