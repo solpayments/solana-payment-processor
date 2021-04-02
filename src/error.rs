@@ -1,4 +1,6 @@
-use num_traits::FromPrimitive;
+//! Error types
+
+use num_derive::FromPrimitive;
 use solana_program::{
     decode_error::DecodeError,
     msg,
@@ -6,19 +8,19 @@ use solana_program::{
 };
 use thiserror::Error;
 
-#[derive(Error, Debug, Copy, Clone)]
+#[derive(Clone, Debug, Eq, Error, PartialEq, FromPrimitive)]
 pub enum PaymentProcessorError {
     /// Invalid instruction
-    #[error("Invalid Instruction")]
+    #[error("Error: Invalid Instruction")]
     InvalidInstruction,
     /// Seller And Buyer Mints Not The Same
-    #[error("Seller And Buyer Mints Not The Same")]
+    #[error("Error: Seller And Buyer Mints Not The Same")]
     MintNotEqual,
     /// The Amount Is Already Withdrawn
-    #[error("The Amount Is Already Withdrawn")]
+    #[error("Error: The Amount Is Already Withdrawn")]
     AlreadyWithdrawn,
     /// The Provided Merchant Is Wrong
-    #[error("The Provided Merchant Is Wrong")]
+    #[error("Error: The Provided Merchant Is Wrong")]
     WrongMerchant,
 }
 
@@ -35,21 +37,7 @@ impl<T> DecodeError<T> for PaymentProcessorError {
 }
 
 impl PrintProgramError for PaymentProcessorError {
-    fn print<E>(&self)
-    where
-        E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + FromPrimitive,
-    {
-        match self {
-            PaymentProcessorError::InvalidInstruction => msg!("Error: Invalid Instruction"),
-            PaymentProcessorError::MintNotEqual => {
-                msg!("Error: Seller And Buyer Mints Not The Same")
-            },
-            PaymentProcessorError::AlreadyWithdrawn => {
-                msg!("Error: The Amount Is Already Withdrawn")
-            }
-            PaymentProcessorError::WrongMerchant => {
-                msg!("Error: The Provided Merchant Is Wrong")
-            }
-        }
+    fn print<E>(&self) {
+        msg!(&self.to_string());
     }
 }

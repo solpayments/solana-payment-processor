@@ -2269,6 +2269,7 @@ dependencies = [
  "arrayref",
  "assert_matches",
  "borsh 0.9.0",
+ "num-derive",
  "num-traits",
  "solana-program",
  "solana-program-test",

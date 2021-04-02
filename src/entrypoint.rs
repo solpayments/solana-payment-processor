@@ -1,9 +1,11 @@
 #![cfg(not(feature = "no-entrypoint"))]
 
-use solana_program::{
-    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg, pubkey::Pubkey,
-};
+use crate::error::PaymentProcessorError;
 use crate::instruction::PaymentProcessorInstruction;
+use solana_program::{
+    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult,
+    program_error::PrintProgramError, pubkey::Pubkey,
+};
 
 entrypoint!(process_instruction);
 fn process_instruction(
@@ -11,11 +13,11 @@ fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    msg!(
-        "process_instruction: {}: {} accounts, data={:?}",
-        program_id,
-        accounts.len(),
-        instruction_data
-    );
-    PaymentProcessorInstruction::process(program_id, accounts, instruction_data)
+    if let Err(error) = PaymentProcessorInstruction::process(program_id, accounts, instruction_data)
+    {
+        // catch the error so we can print it
+        error.print::<PaymentProcessorError>();
+        return Err(error);
+    }
+    Ok(())
 }
