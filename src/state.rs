@@ -1,6 +1,4 @@
-use borsh::{
-    BorshDeserialize, BorshSchema, BorshSerialize,
-};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_program::{
     clock::UnixTimestamp,
     program_pack::{IsInitialized, Sealed},
@@ -23,6 +21,7 @@ pub trait Serdes: Sized + BorshSerialize + BorshDeserialize {
 pub struct MerchantAccount {
     pub is_initialized: bool,
     pub owner_pubkey: PublicKey,
+    pub sponsor_pubkey: PublicKey,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
@@ -39,7 +38,7 @@ pub struct OrderAccount {
     pub created: UnixTimestamp,
     pub modified: UnixTimestamp,
     pub merchant_pubkey: PublicKey,
-    pub mint_pubkey: PublicKey, // represents the token/currency in use
+    pub mint_pubkey: PublicKey,  // represents the token/currency in use
     pub token_pubkey: PublicKey, // represents the token account that holds the money
     pub payer_pubkey: PublicKey,
     pub expected_amount: u64,
@@ -62,7 +61,7 @@ impl IsInitialized for MerchantAccount {
 }
 
 impl MerchantAccount {
-    pub const LEN: usize = 33;
+    pub const LEN: usize = size_of::<u8>() + size_of::<PublicKey>() + size_of::<PublicKey>();
 }
 
 // impl for OrderAccount

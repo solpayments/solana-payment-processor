@@ -52,8 +52,7 @@ impl PaymentProcessorInstruction {
             PaymentProcessorInstruction::Withdraw => {
                 msg!("Instruction: Withdraw");
                 process_withdraw_payment(program_id, accounts)
-            }
-            // _ => Err(ProgramError::InvalidInstructionData),
+            } // _ => Err(ProgramError::InvalidInstructionData),
         }
     }
 }
@@ -112,6 +111,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
     msg!("Saving merchant account information...");
     merchant_account.is_initialized = true;
     merchant_account.owner_pubkey = signer_info.key.to_bytes();
+    merchant_account.sponsor_pubkey = Pubkey::from_str(PROGRAM_OWNER).unwrap().to_bytes();
     MerchantAccount::pack(&merchant_account, &mut merchant_info.data.borrow_mut());
 
     Ok(())
@@ -426,24 +426,29 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
     msg!("Transferring processing fee to the program owner...");
-    invoke_signed(
-        &spl_token::instruction::transfer(
-            token_program_info.key,
-            order_payment_token_info.key,
-            program_owner_token_info.key,
-            &pda,
-            &[&pda],
-            order_account.fee_amount,
-        )
-        .unwrap(),
-        &[
-            token_program_info.clone(),
-            pda_info.clone(),
-            order_payment_token_info.clone(),
-            program_owner_token_info.clone(),
-        ],
-        &[&[&PDA_SEED, &[pda_nonce]]],
-    )?;
+    if Pubkey::new_from_array(merchant_account.sponsor_pubkey)
+        == Pubkey::from_str(PROGRAM_OWNER).unwrap()
+    {
+        // this means there is no third-party sponsor to pay
+        invoke_signed(
+            &spl_token::instruction::transfer(
+                token_program_info.key,
+                order_payment_token_info.key,
+                program_owner_token_info.key,
+                &pda,
+                &[&pda],
+                order_account.fee_amount,
+            )
+            .unwrap(),
+            &[
+                token_program_info.clone(),
+                pda_info.clone(),
+                order_payment_token_info.clone(),
+                program_owner_token_info.clone(),
+            ],
+            &[&[&PDA_SEED, &[pda_nonce]]],
+        )?;
+    }
 
     // update the order account data
     msg!("Updating order account information...");
