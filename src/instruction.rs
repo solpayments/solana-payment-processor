@@ -646,6 +646,20 @@ mod test {
         let payer = merchant_result.3;
         let recent_blockhash = merchant_result.4;
 
+        // test that sponsor was saved okay
+        let merchant_account = banks_client.get_account(merchant_account_pubkey).await;
+        let merchant_data = match merchant_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => match MerchantAccount::unpack(&value.data) {
+                    Ok(data) => data,
+                    Err(error) => panic!("Problem: {:?}", error),
+                },
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(sponsor_pk.to_bytes(), merchant_data.sponsor_pubkey);
+
         let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
 
         // create and initialize merchant token account
