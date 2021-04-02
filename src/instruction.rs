@@ -128,6 +128,7 @@ pub fn withdraw(
     merchant_acc_pubkey: Pubkey,
     order_payment_token_acc_pubkey: Pubkey,
     merchant_token_acc_pubkey: Pubkey,
+    program_token_acc_pubkey: Pubkey,
     pda: Pubkey,
 ) -> Instruction {
     Instruction {
@@ -138,13 +139,12 @@ pub fn withdraw(
             AccountMeta::new_readonly(merchant_acc_pubkey, false),
             AccountMeta::new(order_payment_token_acc_pubkey, false),
             AccountMeta::new(merchant_token_acc_pubkey, false),
+            AccountMeta::new(program_token_acc_pubkey, false),
             AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
         ],
-        data: PaymentProcessorInstruction::Withdraw
-            .try_to_vec()
-            .unwrap(),
+        data: PaymentProcessorInstruction::Withdraw.try_to_vec().unwrap(),
     }
 }
 
@@ -153,7 +153,7 @@ mod test {
     use {
         super::*,
         crate::instruction::PaymentProcessorInstruction,
-        crate::processor::{MERCHANT, PDA_SEED},
+        crate::processor::{MERCHANT, PDA_SEED, PROGRAM_OWNER},
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         crate::utils::get_order_account_pubkey,
         assert_matches::*,
@@ -489,6 +489,27 @@ mod test {
             &program_id,
         );
 
+        let program_owner_pk =
+            Pubkey::from_str(PROGRAM_OWNER).unwrap();
+        let program_owner_token_pubkey = spl_associated_token_account::get_associated_token_address(
+            &program_owner_pk,
+            &mint_keypair.pubkey(),
+        );
+
+        // Create program owner account
+        let mut transaction = Transaction::new_with_payer(
+            &[
+                spl_associated_token_account::create_associated_token_account(
+                    &payer.pubkey(),
+                    &program_owner_pk,
+                    &mint_keypair.pubkey(),
+                ),
+            ],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer], recent_blockhash);
+        banks_client.process_transaction(transaction).await.unwrap();
+
         // call withdraw ix
         let mut transaction = Transaction::new_with_payer(
             &[withdraw(
@@ -498,6 +519,7 @@ mod test {
                 merchant_account_pubkey,
                 order_payment_token_acc_pubkey,
                 merchant_token_keypair.pubkey(),
+                program_owner_token_pubkey,
                 pda,
             )],
             Some(&payer.pubkey()),
@@ -522,7 +544,9 @@ mod test {
         assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
 
         // test contents of merchant token account
-        let merchant_token_account = banks_client.get_account(merchant_token_keypair.pubkey()).await;
+        let merchant_token_account = banks_client
+            .get_account(merchant_token_keypair.pubkey())
+            .await;
         let merchant_token_account = match merchant_token_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
@@ -535,6 +559,27 @@ mod test {
             Ok(data) => data,
             Err(error) => panic!("Problem: {:?}", error),
         };
-        assert_eq!(order_data.take_home_amount + 99, merchant_account_data.amount);
+        assert_eq!(
+            order_data.take_home_amount + 99,
+            merchant_account_data.amount
+        );
+
+        // test contents of program owner token account
+        let program_owner_token_account =
+            banks_client.get_account(program_owner_token_pubkey).await;
+        let program_owner_token_account = match program_owner_token_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        let program_owner_account_data =
+            spl_token::state::Account::unpack(&program_owner_token_account.data);
+        let program_owner_account_data = match program_owner_account_data {
+            Ok(data) => data,
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(order_data.fee_amount, program_owner_account_data.amount);
     }
 }
