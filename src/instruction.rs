@@ -250,7 +250,7 @@ mod test {
         transaction
     }
 
-    async fn create_merchant_account() -> MerchantResult {
+    async fn create_merchant_account(sponsor_pubkey: Option<&Pubkey>) -> MerchantResult {
         let program_id = Pubkey::from_str(&"mosh111111111111111111111111111111111111111").unwrap();
 
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
@@ -271,7 +271,7 @@ mod test {
                 program_id,
                 payer.pubkey(),
                 merchant_acc_pubkey,
-                Option::None,
+                sponsor_pubkey,
             )],
             Some(&payer.pubkey()),
         );
@@ -395,7 +395,7 @@ mod test {
 
     #[tokio::test]
     async fn test_register_merchant() {
-        let result = create_merchant_account().await;
+        let result = create_merchant_account(Option::None).await;
         let program_id = result.0;
         let merchant_pubkey = result.1;
         let mut banks_client = result.2;
@@ -428,7 +428,7 @@ mod test {
         let order_id = String::from("1337");
         let secret = String::from("hunter2");
 
-        let mut merchant_result = create_merchant_account().await;
+        let mut merchant_result = create_merchant_account(Option::None).await;
 
         let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
             create_order(amount, &order_id, &secret, &mut merchant_result).await;
@@ -494,7 +494,7 @@ mod test {
 
     #[tokio::test]
     async fn test_withdraw() {
-        let mut merchant_result = create_merchant_account().await;
+        let mut merchant_result = create_merchant_account(Option::None).await;
         let merchant_token_keypair = Keypair::new();
         let amount: u64 = 1234567890;
         let order_id = String::from("PD17CUSZ75");
