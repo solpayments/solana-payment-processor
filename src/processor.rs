@@ -21,9 +21,11 @@ use solana_program::{
 // use spl_associated_token_account;
 use spl_token::{self, state::Account as TokenAccount};
 use std::convert::TryInto;
+use std::str::FromStr;
 
 pub const MERCHANT: &str = "merchant";
 pub const PDA_SEED: &[u8] = b"sol_payment_processor";
+pub const PROGRAM_OWNER: &str = "44fVncfVm5fB8VsRBwVZW75FdR1nSVUKcf9nUa4ky6qN";
 
 /// Processes the instruction
 impl PaymentProcessorInstruction {
@@ -328,6 +330,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let merchant_info = next_account_info(account_info_iter)?;
     let order_payment_token_info = next_account_info(account_info_iter)?;
     let merchant_token_info = next_account_info(account_info_iter)?;
+    let program_owner_token_info = next_account_info(account_info_iter)?;
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
     let clock_sysvar_info = next_account_info(account_info_iter)?;
@@ -338,7 +341,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     if !signer_info.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
-    // ensure merchant and order account is owned by this program
+    // ensure merchant and order accounts are owned by this program
     if *merchant_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -353,6 +356,11 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let (pda, pda_nonce) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
     if pda_info.key != &pda {
         return Err(ProgramError::InvalidSeeds);
+    }
+    // check that provided program owner is correct
+    let program_owner_token_data = TokenAccount::unpack(&program_owner_token_info.data.borrow())?;
+    if program_owner_token_data.owner != Pubkey::from_str(PROGRAM_OWNER).unwrap() {
+        return Err(PaymentProcessorError::WrongProgramOwner.into());
     }
     // get the merchant account
     let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
@@ -414,6 +422,25 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
             pda_info.clone(),
             order_payment_token_info.clone(),
             merchant_token_info.clone(),
+        ],
+        &[&[&PDA_SEED, &[pda_nonce]]],
+    )?;
+    msg!("Transferring processing fee to the program owner...");
+    invoke_signed(
+        &spl_token::instruction::transfer(
+            token_program_info.key,
+            order_payment_token_info.key,
+            program_owner_token_info.key,
+            &pda,
+            &[&pda],
+            order_account.fee_amount,
+        )
+        .unwrap(),
+        &[
+            token_program_info.clone(),
+            pda_info.clone(),
+            order_payment_token_info.clone(),
+            program_owner_token_info.clone(),
         ],
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
