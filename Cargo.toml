@@ -1,21 +1,29 @@
 [package]
-name = "bpf-program-template"
+name = "sol-payment-processor"
 version = "0.1.0"
 edition = "2018"
 license = "WTFPL"
 publish = false
 
 [dependencies]
-solana-program = "=1.5.15"
+arrayref = "0.3.6"
+solana-program = "=1.6.1"
+thiserror = "1.0.23"
+borsh = "=0.9.0"
+num-traits = "0.2.14"
+num-derive = "0.3.3"
+spl-token = {version = "3.0.1", features = ["no-entrypoint"]}
+spl-associated-token-account = {version = "1.0.2", features = ["no-entrypoint"]}
 
 [features]
+no-entrypoint = []
 test-bpf = []
 
 [dev-dependencies]
 assert_matches = "1.4.0"
-solana-program-test = "=1.5.15"
-solana-sdk = "=1.5.15"
-solana-validator = "=1.5.15"
+solana-sdk = "=1.6.1"
+solana-program-test = "=1.6.1"
+spl-token = {version = "3.0.1", features = ["no-entrypoint"]}
 
 [lib]
 crate-type = ["cdylib", "lib"]
