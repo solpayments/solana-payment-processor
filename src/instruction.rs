@@ -66,15 +66,22 @@ pub fn register_merchant(
     program_id: Pubkey,
     signer_pubkey: Pubkey,
     merchant_acc_pubkey: Pubkey,
+    sponsor_pubkey: Option<&Pubkey>,
 ) -> Instruction {
+    let mut account_metas = vec![
+        AccountMeta::new(signer_pubkey, true),
+        AccountMeta::new(merchant_acc_pubkey, false),
+        AccountMeta::new_readonly(solana_program::system_program::id(), false),
+        AccountMeta::new_readonly(sysvar::rent::id(), false),
+    ];
+
+    if let Some(sponsor_pubkey) = sponsor_pubkey {
+        account_metas.push(AccountMeta::new_readonly(*sponsor_pubkey, true));
+    }
+
     Instruction {
         program_id,
-        accounts: vec![
-            AccountMeta::new(signer_pubkey, true),
-            AccountMeta::new(merchant_acc_pubkey, false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(sysvar::rent::id(), false),
-        ],
+        accounts: account_metas,
         data: PaymentProcessorInstruction::RegisterMerchant
             .try_to_vec()
             .unwrap(),
@@ -264,6 +271,7 @@ mod test {
                 program_id,
                 payer.pubkey(),
                 merchant_acc_pubkey,
+                Option::None,
             )],
             Some(&payer.pubkey()),
         );

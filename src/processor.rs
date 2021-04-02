@@ -64,6 +64,7 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
     let merchant_info = next_account_info(account_info_iter)?;
     let system_sysvar_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
+    let possible_sponsor_info = next_account_info(account_info_iter);
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
 
     // ensure signer can sign
@@ -108,10 +109,13 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
     }
 
     // create the MerchantAccount object
-    msg!("Saving merchant account information...");
     merchant_account.is_initialized = true;
     merchant_account.owner_pubkey = signer_info.key.to_bytes();
-    merchant_account.sponsor_pubkey = Pubkey::from_str(PROGRAM_OWNER).unwrap().to_bytes();
+    // set the sponsor as provided or default to the program owner
+    merchant_account.sponsor_pubkey = match possible_sponsor_info {
+        Ok(sponsor_info) => sponsor_info.key.to_bytes(),
+        Err(_error) => Pubkey::from_str(PROGRAM_OWNER).unwrap().to_bytes(),
+    };
     MerchantAccount::pack(&merchant_account, &mut merchant_info.data.borrow_mut());
 
     Ok(())
