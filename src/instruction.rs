@@ -46,7 +46,7 @@ pub enum PaymentProcessorInstruction {
         #[allow(dead_code)] // not dead code..
         secret: String,
     },
-    /// Express Checkout - create order and pay for it in one transaction
+    /// Withdraw funds for a particular order
     ///
     /// Accounts expected:
     ///
