@@ -28,7 +28,7 @@ pub enum PaymentProcessorInstruction {
     /// 3. `[writable]` The seller token account - this is where the amount paid will go. Owned by this program
     /// 4. `[writable]` The buyer token account
     /// 5. `[]` The token mint account - represents the 'currency' being used
-    /// 6. `[]` The sol-payment-processor program derived address
+    /// 6. `[]` This program's derived address
     /// 7. `[]` The token program
     /// 8. `[]` The System program
     /// 9. `[]` The clock sysvar
@@ -59,7 +59,7 @@ pub enum PaymentProcessorInstruction {
     /// 4. `[writable]` The merchant token account (where we will withdraw to)
     /// 5. `[writable]` The program owner token account (where we will send program owner fee)
     /// 6. `[writable]` The sponsor token account (where we will send sponsor fee)
-    /// 7. `[]` The sol-payment-processor program derived address
+    /// 7. `[]` This program's derived address
     /// 8. `[]` The token program
     /// 9. `[]` The clock sysvar
     Withdraw,

@@ -96,7 +96,7 @@ Finally, whenever ready anyone can execute a `Withdraw` instruction which will r
 /// 4. `[writable]` The merchant token account (where we will withdraw to)
 /// 5. `[writable]` The program owner token account (where we will send program owner fee)
 /// 6. `[writable]` The sponsor token account (where we will send sponsor fee)
-/// 7. `[]` The sol-payment-processor program derived address
+/// 7. `[]` This program's derived address
 /// 8. `[]` The token program
 /// 9. `[]` The clock sysvar
 Withdraw
