@@ -16,21 +16,23 @@ pub enum PaymentProcessorInstruction {
     /// 1. `[writable]` The merchant account.  Owned by this program
     /// 2. `[]` System program
     /// 3. `[]` The rent sysvar
+    /// 4. `[optional]` The sponsor account
     RegisterMerchant,
     /// Express Checkout - create order and pay for it in one transaction
     ///
     /// Accounts expected:
     ///
     /// 0. `[signer]` The account of the person initializing the transaction
-    /// 1. `[writable]` The payer's token account to be used for the payment
-    /// 2. `[writable]` The order account.  Owned by this program
-    /// 3. `[]` The merchant account.  Owned by this program
-    /// 4. `[writable]` The seller token account
-    /// 5. `[writable]` The buyer token account
-    /// 6. `[]` The token program
-    /// 7. `[]` The System program
-    /// 8. `[]` The clock sysvar
-    /// 9. `[]` The rent sysvar
+    /// 1. `[writable]` The order account.  Owned by this program
+    /// 2. `[]` The merchant account.  Owned by this program
+    /// 3. `[writable]` The seller token account - this is where the amount paid will go. Owned by this program
+    /// 4. `[writable]` The buyer token account
+    /// 5. `[]` The token mint account - represents the 'currency' being used
+    /// 6. `[]` The sol-payment-processor program derived address
+    /// 7. `[]` The token program
+    /// 8. `[]` The System program
+    /// 9. `[]` The clock sysvar
+    /// 10. `[]` The rent sysvar
     ExpressCheckout {
         #[allow(dead_code)] // not dead code..
         amount: u64,
@@ -55,9 +57,11 @@ pub enum PaymentProcessorInstruction {
     /// 2. `[]` The merchant account.  Owned by this program
     /// 3. `[writable]` The order token account (where the money was put during payment)
     /// 4. `[writable]` The merchant token account (where we will withdraw to)
-    /// 5. `[]` The sol-payment-processor program derived address
-    /// 6. `[]` The token program
-    /// 7. `[]` The clock sysvar
+    /// 5. `[writable]` The program owner token account (where we will send program owner fee)
+    /// 6. `[writable]` The sponsor token account (where we will send sponsor fee)
+    /// 7. `[]` The sol-payment-processor program derived address
+    /// 8. `[]` The token program
+    /// 9. `[]` The clock sysvar
     Withdraw,
 }
 
