@@ -8,7 +8,16 @@ SolPayments is a smart contract program build for the [Solana blockchain](https:
 - **Fast** - payments made through SolPayments are completed in a few seconds
 - **Non-custodial** - SolPayments never takes custody of payments made to any merchants that use it.  You are always in full control of your money.
 
-## SolPayments Program API
+## How does it work?
+
+1. It starts with merchant registration where the merchant registers with SolPayments.  At this stage, the merchant can optionally identify a sponsor (the person who referred them to SolPayments or helped them set up).
+2. For accepting payments, the merchant would provide a user interface (UI) which creates a unique order id and generates a "pay now" or similar button.  When this button is pressed, the following happens:
+    - an `ExpressCheckout` instruction is sent to the program
+    - an order account is created on chain that stores the order details
+    - the payment amount is transferred to a token account that is controlled by the program (to the extent that no one other than the merchant can access this amount)
+3. Finally, the merchant (or anyone at all) can issue in instruction to withdraw the amount.  This results in the payment being transferred to the merchant, and the payment processing fees being sent to the program owner and/or the sponsor.
+
+## Program API
 
 The SolPayments program has three general parts:
 
@@ -90,7 +99,7 @@ Finally, whenever ready anyone can execute a `Withdraw` instruction which will r
 /// 7. `[]` The sol-payment-processor program derived address
 /// 8. `[]` The token program
 /// 9. `[]` The clock sysvar
-Withdraw,
+Withdraw
 ```
 
 ## Contributing
