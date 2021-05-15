@@ -63,11 +63,9 @@ pub enum PaymentProcessorInstruction {
     /// 2. `[]` The merchant account.  Owned by this program
     /// 3. `[writable]` The order token account (where the money was put during payment)
     /// 4. `[writable]` The merchant token account (where we will withdraw to)
-    /// 5. `[writable]` The program owner token account (where we will send program owner fee)
-    /// 6. `[writable]` The sponsor token account (where we will send sponsor fee)
-    /// 7. `[]` This program's derived address
-    /// 8. `[]` The token program
-    /// 9. `[]` The clock sysvar
+    /// 5. `[]` This program's derived address
+    /// 6. `[]` The token program
+    /// 7. `[]` The clock sysvar
     Withdraw,
 }
 
@@ -150,8 +148,6 @@ pub fn withdraw(
     merchant_acc_pubkey: Pubkey,
     order_payment_token_acc_pubkey: Pubkey,
     merchant_token_acc_pubkey: Pubkey,
-    program_token_acc_pubkey: Pubkey,
-    sponsor_token_acc_pubkey: Pubkey,
     pda: Pubkey,
 ) -> Instruction {
     Instruction {
@@ -162,8 +158,6 @@ pub fn withdraw(
             AccountMeta::new_readonly(merchant_acc_pubkey, false),
             AccountMeta::new(order_payment_token_acc_pubkey, false),
             AccountMeta::new(merchant_token_acc_pubkey, false),
-            AccountMeta::new(program_token_acc_pubkey, false),
-            AccountMeta::new(sponsor_token_acc_pubkey, false),
             AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
@@ -567,6 +561,18 @@ mod test {
         assert_eq!(2000000000, seller_account_data.amount);
         assert_eq!(pda, seller_account_data.owner);
         assert_eq!(mint_keypair.pubkey(), seller_account_data.mint);
+
+        // test contents of program owner account
+        let program_owner_account =
+            banks_client.get_account(Pubkey::from_str(PROGRAM_OWNER).unwrap()).await;
+        let program_owner_account = match program_owner_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(FEE_IN_LAMPORTS, program_owner_account.lamports);
     }
 
     #[tokio::test]
@@ -594,7 +600,7 @@ mod test {
                     recent_blockhash,
                     &merchant_token_keypair,
                     &payer.pubkey(),
-                    99,
+                    0,
                 ))
                 .await,
             Ok(())
@@ -608,26 +614,6 @@ mod test {
             &program_id,
         );
 
-        let program_owner_pk = Pubkey::from_str(PROGRAM_OWNER).unwrap();
-        let program_owner_token_pubkey = spl_associated_token_account::get_associated_token_address(
-            &program_owner_pk,
-            &mint_keypair.pubkey(),
-        );
-
-        // Create program owner account
-        let mut transaction = Transaction::new_with_payer(
-            &[
-                spl_associated_token_account::create_associated_token_account(
-                    &payer.pubkey(),
-                    &program_owner_pk,
-                    &mint_keypair.pubkey(),
-                ),
-            ],
-            Some(&payer.pubkey()),
-        );
-        transaction.sign(&[&payer], recent_blockhash);
-        banks_client.process_transaction(transaction).await.unwrap();
-
         // call withdraw ix
         let mut transaction = Transaction::new_with_payer(
             &[withdraw(
@@ -637,8 +623,6 @@ mod test {
                 merchant_account_pubkey,
                 order_payment_token_acc_pubkey,
                 merchant_token_keypair.pubkey(),
-                program_owner_token_pubkey,
-                program_owner_token_pubkey,
                 pda,
             )],
             Some(&payer.pubkey()),
@@ -663,7 +647,7 @@ mod test {
         assert_eq!(amount, order_data.paid_amount);
         assert_eq!(order_id, order_data.order_id);
         assert_eq!(secret, order_data.secret);
-        assert_eq!(3703703, order_data.fee_amount);
+        assert_eq!(FEE_IN_LAMPORTS, order_data.fee_amount);
 
         // test contents of merchant token account
         let merchant_token_account = banks_client
@@ -679,198 +663,184 @@ mod test {
             },
             Err(error) => panic!("Problem: {:?}", error),
         };
-
-        // test contents of program owner token account
-        let program_owner_token_account =
-            banks_client.get_account(program_owner_token_pubkey).await;
-        let program_owner_account_data = match program_owner_token_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match spl_token::state::Account::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        assert_eq!(order_data.fee_amount, program_owner_account_data.amount);
+        assert_eq!(order_data.paid_amount, merchant_account_data.amount);
     }
 
-    #[tokio::test]
-    async fn test_withdraw_with_sponsor() {
-        let sponsor_pk = Pubkey::new_unique();
+    // #[tokio::test]
+    // async fn test_withdraw_with_sponsor() {
+    //     let sponsor_pk = Pubkey::new_unique();
 
-        let mut merchant_result = create_merchant_account(Some("iloveoov".to_string()), Some(&sponsor_pk)).await;
-        let merchant_token_keypair = Keypair::new();
-        let amount: u64 = 80000000000;
-        let order_id = String::from("xyz23A2");
-        let secret = String::from("");
+    //     let mut merchant_result = create_merchant_account(Some("iloveoov".to_string()), Some(&sponsor_pk)).await;
+    //     let merchant_token_keypair = Keypair::new();
+    //     let amount: u64 = 80000000000;
+    //     let order_id = String::from("xyz23A2");
+    //     let secret = String::from("");
 
-        let (order_acc_pubkey, _seller_account_pubkey, mint_keypair) =
-            create_order(amount, &order_id, &secret, &mut merchant_result).await;
+    //     let (order_acc_pubkey, _seller_account_pubkey, mint_keypair) =
+    //         create_order(amount, &order_id, &secret, &mut merchant_result).await;
 
-        let program_id = merchant_result.0;
-        let merchant_account_pubkey = merchant_result.1;
-        let mut banks_client = merchant_result.2;
-        let payer = merchant_result.3;
-        let recent_blockhash = merchant_result.4;
+    //     let program_id = merchant_result.0;
+    //     let merchant_account_pubkey = merchant_result.1;
+    //     let mut banks_client = merchant_result.2;
+    //     let payer = merchant_result.3;
+    //     let recent_blockhash = merchant_result.4;
 
-        // test that sponsor was saved okay
-        let merchant_account = banks_client.get_account(merchant_account_pubkey).await;
-        let merchant_data = match merchant_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match MerchantAccount::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        assert_eq!(sponsor_pk.to_bytes(), merchant_data.sponsor_pubkey);
+    //     // test that sponsor was saved okay
+    //     let merchant_account = banks_client.get_account(merchant_account_pubkey).await;
+    //     let merchant_data = match merchant_account {
+    //         Ok(data) => match data {
+    //             None => panic!("Oo"),
+    //             Some(value) => match MerchantAccount::unpack(&value.data) {
+    //                 Ok(data) => data,
+    //                 Err(error) => panic!("Problem: {:?}", error),
+    //             },
+    //         },
+    //         Err(error) => panic!("Problem: {:?}", error),
+    //     };
+    //     assert_eq!(sponsor_pk.to_bytes(), merchant_data.sponsor_pubkey);
 
-        let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
+    //     let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
 
-        // create and initialize merchant token account
-        assert_matches!(
-            banks_client
-                .process_transaction(create_token_account_transaction(
-                    &payer,
-                    &mint_keypair,
-                    recent_blockhash,
-                    &merchant_token_keypair,
-                    &payer.pubkey(),
-                    99,
-                ))
-                .await,
-            Ok(())
-        );
-        let (order_payment_token_acc_pubkey, _bump_seed) = Pubkey::find_program_address(
-            &[
-                &order_acc_pubkey.to_bytes(),
-                &spl_token::id().to_bytes(),
-                &mint_keypair.pubkey().to_bytes(),
-            ],
-            &program_id,
-        );
+    //     // create and initialize merchant token account
+    //     assert_matches!(
+    //         banks_client
+    //             .process_transaction(create_token_account_transaction(
+    //                 &payer,
+    //                 &mint_keypair,
+    //                 recent_blockhash,
+    //                 &merchant_token_keypair,
+    //                 &payer.pubkey(),
+    //                 99,
+    //             ))
+    //             .await,
+    //         Ok(())
+    //     );
+    //     let (order_payment_token_acc_pubkey, _bump_seed) = Pubkey::find_program_address(
+    //         &[
+    //             &order_acc_pubkey.to_bytes(),
+    //             &spl_token::id().to_bytes(),
+    //             &mint_keypair.pubkey().to_bytes(),
+    //         ],
+    //         &program_id,
+    //     );
 
-        let program_owner_pk = Pubkey::from_str(PROGRAM_OWNER).unwrap();
-        let program_owner_token_pubkey = spl_associated_token_account::get_associated_token_address(
-            &program_owner_pk,
-            &mint_keypair.pubkey(),
-        );
+    //     let program_owner_pk = Pubkey::from_str(PROGRAM_OWNER).unwrap();
+    //     let program_owner_token_pubkey = spl_associated_token_account::get_associated_token_address(
+    //         &program_owner_pk,
+    //         &mint_keypair.pubkey(),
+    //     );
 
-        // Create program owner account
-        let mut transaction = Transaction::new_with_payer(
-            &[
-                spl_associated_token_account::create_associated_token_account(
-                    &payer.pubkey(),
-                    &program_owner_pk,
-                    &mint_keypair.pubkey(),
-                ),
-            ],
-            Some(&payer.pubkey()),
-        );
-        transaction.sign(&[&payer], recent_blockhash);
-        banks_client.process_transaction(transaction).await.unwrap();
+    //     // Create program owner account
+    //     let mut transaction = Transaction::new_with_payer(
+    //         &[
+    //             spl_associated_token_account::create_associated_token_account(
+    //                 &payer.pubkey(),
+    //                 &program_owner_pk,
+    //                 &mint_keypair.pubkey(),
+    //             ),
+    //         ],
+    //         Some(&payer.pubkey()),
+    //     );
+    //     transaction.sign(&[&payer], recent_blockhash);
+    //     banks_client.process_transaction(transaction).await.unwrap();
 
-        // Create sponsor account
-        let sponsor_token_pubkey = spl_associated_token_account::get_associated_token_address(
-            &sponsor_pk,
-            &mint_keypair.pubkey(),
-        );
-        let mut transaction = Transaction::new_with_payer(
-            &[
-                spl_associated_token_account::create_associated_token_account(
-                    &payer.pubkey(),
-                    &sponsor_pk,
-                    &mint_keypair.pubkey(),
-                ),
-            ],
-            Some(&payer.pubkey()),
-        );
-        transaction.sign(&[&payer], recent_blockhash);
-        banks_client.process_transaction(transaction).await.unwrap();
+    //     // Create sponsor account
+    //     let sponsor_token_pubkey = spl_associated_token_account::get_associated_token_address(
+    //         &sponsor_pk,
+    //         &mint_keypair.pubkey(),
+    //     );
+    //     let mut transaction = Transaction::new_with_payer(
+    //         &[
+    //             spl_associated_token_account::create_associated_token_account(
+    //                 &payer.pubkey(),
+    //                 &sponsor_pk,
+    //                 &mint_keypair.pubkey(),
+    //             ),
+    //         ],
+    //         Some(&payer.pubkey()),
+    //     );
+    //     transaction.sign(&[&payer], recent_blockhash);
+    //     banks_client.process_transaction(transaction).await.unwrap();
 
-        // call withdraw ix
-        let mut transaction = Transaction::new_with_payer(
-            &[withdraw(
-                program_id,
-                payer.pubkey(),
-                order_acc_pubkey,
-                merchant_account_pubkey,
-                order_payment_token_acc_pubkey,
-                merchant_token_keypair.pubkey(),
-                program_owner_token_pubkey,
-                sponsor_token_pubkey,
-                pda,
-            )],
-            Some(&payer.pubkey()),
-        );
-        transaction.sign(&[&payer], recent_blockhash);
-        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+    //     // call withdraw ix
+    //     let mut transaction = Transaction::new_with_payer(
+    //         &[withdraw(
+    //             program_id,
+    //             payer.pubkey(),
+    //             order_acc_pubkey,
+    //             merchant_account_pubkey,
+    //             order_payment_token_acc_pubkey,
+    //             merchant_token_keypair.pubkey(),
+    //             program_owner_token_pubkey,
+    //             sponsor_token_pubkey,
+    //             pda,
+    //         )],
+    //         Some(&payer.pubkey()),
+    //     );
+    //     transaction.sign(&[&payer], recent_blockhash);
+    //     assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
 
-        // test contents of order account
-        let order_account = banks_client.get_account(order_acc_pubkey).await;
-        let order_data = match order_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match OrderAccount::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
-        assert_eq!(amount, order_data.expected_amount);
-        assert_eq!(amount, order_data.paid_amount);
-        assert_eq!(order_id, order_data.order_id);
-        assert_eq!(secret, order_data.secret);
-        assert_eq!(240000000, order_data.fee_amount);
+    //     // test contents of order account
+    //     let order_account = banks_client.get_account(order_acc_pubkey).await;
+    //     let order_data = match order_account {
+    //         Ok(data) => match data {
+    //             None => panic!("Oo"),
+    //             Some(value) => match OrderAccount::unpack(&value.data) {
+    //                 Ok(data) => data,
+    //                 Err(error) => panic!("Problem: {:?}", error),
+    //             },
+    //         },
+    //         Err(error) => panic!("Problem: {:?}", error),
+    //     };
+    //     assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
+    //     assert_eq!(amount, order_data.expected_amount);
+    //     assert_eq!(amount, order_data.paid_amount);
+    //     assert_eq!(order_id, order_data.order_id);
+    //     assert_eq!(secret, order_data.secret);
+    //     assert_eq!(240000000, order_data.fee_amount);
 
-        // test contents of merchant token account
-        let merchant_token_account = banks_client
-            .get_account(merchant_token_keypair.pubkey())
-            .await;
-        let merchant_account_data = match merchant_token_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match spl_token::state::Account::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
+    //     // test contents of merchant token account
+    //     let merchant_token_account = banks_client
+    //         .get_account(merchant_token_keypair.pubkey())
+    //         .await;
+    //     let merchant_account_data = match merchant_token_account {
+    //         Ok(data) => match data {
+    //             None => panic!("Oo"),
+    //             Some(value) => match spl_token::state::Account::unpack(&value.data) {
+    //                 Ok(data) => data,
+    //                 Err(error) => panic!("Problem: {:?}", error),
+    //             },
+    //         },
+    //         Err(error) => panic!("Problem: {:?}", error),
+    //     };
 
-        // test contents of program owner token account
-        let program_owner_token_account =
-            banks_client.get_account(program_owner_token_pubkey).await;
-        let program_owner_account_data = match program_owner_token_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match spl_token::state::Account::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        assert_eq!(239280000, program_owner_account_data.amount);
-        // test contents of sponsor token account
-        let sponsor_token_account = banks_client.get_account(sponsor_token_pubkey).await;
-        let sponsor_account_data = match sponsor_token_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match spl_token::state::Account::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
+    //     // test contents of program owner token account
+    //     let program_owner_token_account =
+    //         banks_client.get_account(program_owner_token_pubkey).await;
+    //     let program_owner_account_data = match program_owner_token_account {
+    //         Ok(data) => match data {
+    //             None => panic!("Oo"),
+    //             Some(value) => match spl_token::state::Account::unpack(&value.data) {
+    //                 Ok(data) => data,
+    //                 Err(error) => panic!("Problem: {:?}", error),
+    //             },
+    //         },
+    //         Err(error) => panic!("Problem: {:?}", error),
+    //     };
+    //     assert_eq!(239280000, program_owner_account_data.amount);
+    //     // test contents of sponsor token account
+    //     let sponsor_token_account = banks_client.get_account(sponsor_token_pubkey).await;
+    //     let sponsor_account_data = match sponsor_token_account {
+    //         Ok(data) => match data {
+    //             None => panic!("Oo"),
+    //             Some(value) => match spl_token::state::Account::unpack(&value.data) {
+    //                 Ok(data) => data,
+    //                 Err(error) => panic!("Problem: {:?}", error),
+    //             },
+    //         },
+    //         Err(error) => panic!("Problem: {:?}", error),
+    //     };
 
-        assert_eq!(240000000 - 239280000, sponsor_account_data.amount);
-    }
+    //     assert_eq!(240000000 - 239280000, sponsor_account_data.amount);
+    // }
 }
