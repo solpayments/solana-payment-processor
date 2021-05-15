@@ -1,8 +1,7 @@
 use crate::{
-    engine::constants::{PDA_SEED},
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::{get_amounts, get_order_account_pubkey, get_order_account_size, FEE},
+    utils::{get_amounts, get_order_account_size, FEE},
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -64,17 +63,6 @@ pub fn process_express_checkout(
     let buyer_token_data = TokenAccount::unpack(&buyer_token_info.data.borrow())?;
     if *mint_info.key != buyer_token_data.mint {
         return Err(PaymentProcessorError::MintNotEqual.into());
-    }
-    // check that provided pda is correct
-    let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
-    if pda_info.key != &pda {
-        return Err(ProgramError::InvalidSeeds);
-    }
-
-    // assert that order account pubkey is correct
-    let address_with_seed = get_order_account_pubkey(&order_id, signer_info.key, program_id);
-    if *order_info.key != address_with_seed {
-        return Err(ProgramError::InvalidSeeds);
     }
     // create order account
     let order_account_size = get_order_account_size(&order_id, &secret);
