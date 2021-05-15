@@ -59,7 +59,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     // merchant.  This ensures that anyone can call the withdraw instruction
     // and the money will still go to the right place
     let merchant_token_data = TokenAccount::unpack(&merchant_token_info.data.borrow())?;
-    if merchant_token_data.owner != Pubkey::new_from_array(merchant_account.owner_pubkey) {
+    if merchant_token_data.owner != Pubkey::new_from_array(merchant_account.owner) {
         return Err(PaymentProcessorError::WrongMerchant.into());
     }
     // get the order account
@@ -68,11 +68,11 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         return Err(ProgramError::UninitializedAccount);
     }
     // ensure order belongs to this merchant
-    if merchant_info.key.to_bytes() != order_account.merchant_pubkey {
+    if merchant_info.key.to_bytes() != order_account.merchant {
         return Err(ProgramError::InvalidAccountData);
     }
     // ensure the order payment token account is the right one
-    if order_payment_token_info.key.to_bytes() != order_account.token_pubkey {
+    if order_payment_token_info.key.to_bytes() != order_account.token {
         return Err(ProgramError::InvalidAccountData);
     }
     // ensure order is not already paid out

@@ -67,7 +67,7 @@ ExpressCheckout {
     /// the pubkey of the merchant -> this is where the money is to be sent
     /// we are receiving it as data and not an account because during the
     /// express checkout we don't want the UI to have to create this account
-    // merchant_token_pubkey: [u8; 32],
+    // merchant_token: [u8; 32],
     /// the external order id (as in issued by the merchant)
     order_id: String,
     // An extra field that can store an encrypted (ot not encrypted) string

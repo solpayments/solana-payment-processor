@@ -71,9 +71,9 @@ pub fn process_register_merchant(
 
     // create the MerchantAccount object
     merchant_account.is_initialized = true;
-    merchant_account.owner_pubkey = signer_info.key.to_bytes();
+    merchant_account.owner = signer_info.key.to_bytes();
     // set the sponsor as provided or default to the program owner
-    merchant_account.sponsor_pubkey = match possible_sponsor_info {
+    merchant_account.sponsor = match possible_sponsor_info {
         Ok(sponsor_info) => sponsor_info.key.to_bytes(),
         Err(_error) => Pubkey::from_str(PROGRAM_OWNER).unwrap().to_bytes(),
     };

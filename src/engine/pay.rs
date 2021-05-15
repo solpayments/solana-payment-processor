@@ -73,7 +73,7 @@ pub fn process_express_checkout(
         return Err(PaymentProcessorError::WrongProgramOwner.into());
     }
     // check that the provided sponsor is correct
-    if *sponsor_info.key != Pubkey::new_from_array(merchant_account.sponsor_pubkey) {
+    if *sponsor_info.key != Pubkey::new_from_array(merchant_account.sponsor) {
         return Err(PaymentProcessorError::WrongSponsor.into());
     }
     // create order account
@@ -195,7 +195,7 @@ pub fn process_express_checkout(
         ],
     )?;
 
-    if Pubkey::new_from_array(merchant_account.sponsor_pubkey)
+    if Pubkey::new_from_array(merchant_account.sponsor)
         == Pubkey::from_str(PROGRAM_OWNER).unwrap()
     {
         msg!("Transferring processing fee to the program owner...");
@@ -245,10 +245,10 @@ pub fn process_express_checkout(
         status: OrderStatus::Paid as u8,
         created: *timestamp,
         modified: *timestamp,
-        merchant_pubkey: merchant_info.key.to_bytes(),
-        mint_pubkey: mint_info.key.to_bytes(),
-        token_pubkey: seller_token_info.key.to_bytes(),
-        payer_pubkey: signer_info.key.to_bytes(),
+        merchant: merchant_info.key.to_bytes(),
+        mint: mint_info.key.to_bytes(),
+        token: seller_token_info.key.to_bytes(),
+        payer: signer_info.key.to_bytes(),
         expected_amount: amount,
         paid_amount: amount,
         order_id,

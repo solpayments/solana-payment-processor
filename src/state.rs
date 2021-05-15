@@ -20,8 +20,8 @@ pub trait Serdes: Sized + BorshSerialize + BorshDeserialize {
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct MerchantAccount {
     pub is_initialized: bool,
-    pub owner_pubkey: PublicKey,
-    pub sponsor_pubkey: PublicKey,
+    pub owner: PublicKey,
+    pub sponsor: PublicKey,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
@@ -37,10 +37,10 @@ pub struct OrderAccount {
     pub status: u8,
     pub created: UnixTimestamp,
     pub modified: UnixTimestamp,
-    pub merchant_pubkey: PublicKey,
-    pub mint_pubkey: PublicKey,  // represents the token/currency in use
-    pub token_pubkey: PublicKey, // represents the token account that holds the money
-    pub payer_pubkey: PublicKey,
+    pub merchant: PublicKey,
+    pub mint: PublicKey,  // represents the token/currency in use
+    pub token: PublicKey, // represents the token account that holds the money
+    pub payer: PublicKey,
     pub expected_amount: u64,
     pub paid_amount: u64,
     pub order_id: String,

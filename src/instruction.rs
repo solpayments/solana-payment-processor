@@ -45,7 +45,7 @@ pub enum PaymentProcessorInstruction {
         /// the pubkey of the merchant -> this is where the money is to be sent
         /// we are receiving it as data and not an account because during the
         /// express checkout we don't want the UI to have to create this account
-        // merchant_token_pubkey: [u8; 32],
+        // merchant_token: [u8; 32],
         /// the external order id (as in issued by the merchant)
         #[allow(dead_code)] // not dead code..
         order_id: String,
@@ -72,20 +72,20 @@ pub enum PaymentProcessorInstruction {
 /// Creates an 'RegisterMerchant' instruction.
 pub fn register_merchant(
     program_id: Pubkey,
-    signer_pubkey: Pubkey,
-    merchant_acc_pubkey: Pubkey,
+    signer: Pubkey,
+    merchant: Pubkey,
     seed: Option<String>,
-    sponsor_pubkey: Option<&Pubkey>,
+    sponsor: Option<&Pubkey>,
 ) -> Instruction {
     let mut account_metas = vec![
-        AccountMeta::new(signer_pubkey, true),
-        AccountMeta::new(merchant_acc_pubkey, false),
+        AccountMeta::new(signer, true),
+        AccountMeta::new(merchant, false),
         AccountMeta::new_readonly(solana_program::system_program::id(), false),
         AccountMeta::new_readonly(sysvar::rent::id(), false),
     ];
 
-    if let Some(sponsor_pubkey) = sponsor_pubkey {
-        account_metas.push(AccountMeta::new_readonly(*sponsor_pubkey, false));
+    if let Some(sponsor) = sponsor {
+        account_metas.push(AccountMeta::new_readonly(*sponsor, false));
     }
 
     Instruction {
@@ -100,14 +100,14 @@ pub fn register_merchant(
 /// Creates an 'ExpressCheckout' instruction.
 pub fn express_checkout(
     program_id: Pubkey,
-    signer_pubkey: Pubkey,
-    order_account_pubkey: Pubkey,
-    merchant_account_pubkey: Pubkey,
-    seller_token_account_pubkey: Pubkey,
-    buyer_token_account_pubkey: Pubkey,
-    mint_pubkey: Pubkey,
-    program_ownwer_account_pubkey: Pubkey,
-    sponsor_account_pubkey: Pubkey,
+    signer: Pubkey,
+    order: Pubkey,
+    merchant: Pubkey,
+    seller_token: Pubkey,
+    buyer_token: Pubkey,
+    mint: Pubkey,
+    program_owner: Pubkey,
+    sponsor: Pubkey,
     pda: Pubkey,
     amount: u64,
     order_id: String,
@@ -116,14 +116,14 @@ pub fn express_checkout(
     Instruction {
         program_id,
         accounts: vec![
-            AccountMeta::new(signer_pubkey, true),
-            AccountMeta::new(order_account_pubkey, false),
-            AccountMeta::new_readonly(merchant_account_pubkey, false),
-            AccountMeta::new(seller_token_account_pubkey, false),
-            AccountMeta::new(buyer_token_account_pubkey, false),
-            AccountMeta::new(program_ownwer_account_pubkey, false),
-            AccountMeta::new(sponsor_account_pubkey, false),
-            AccountMeta::new_readonly(mint_pubkey, false),
+            AccountMeta::new(signer, true),
+            AccountMeta::new(order, false),
+            AccountMeta::new_readonly(merchant, false),
+            AccountMeta::new(seller_token, false),
+            AccountMeta::new(buyer_token, false),
+            AccountMeta::new(program_owner, false),
+            AccountMeta::new(sponsor, false),
+            AccountMeta::new_readonly(mint, false),
             AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
@@ -143,21 +143,21 @@ pub fn express_checkout(
 /// Creates an 'Withdraw' instruction.
 pub fn withdraw(
     program_id: Pubkey,
-    signer_pubkey: Pubkey,
-    order_acc_pubkey: Pubkey,
-    merchant_acc_pubkey: Pubkey,
-    order_payment_token_acc_pubkey: Pubkey,
-    merchant_token_acc_pubkey: Pubkey,
+    signer: Pubkey,
+    order: Pubkey,
+    merchant: Pubkey,
+    order_payment_token: Pubkey,
+    merchant_token: Pubkey,
     pda: Pubkey,
 ) -> Instruction {
     Instruction {
         program_id,
         accounts: vec![
-            AccountMeta::new(signer_pubkey, true),
-            AccountMeta::new(order_acc_pubkey, false),
-            AccountMeta::new_readonly(merchant_acc_pubkey, false),
-            AccountMeta::new(order_payment_token_acc_pubkey, false),
-            AccountMeta::new(merchant_token_acc_pubkey, false),
+            AccountMeta::new(signer, true),
+            AccountMeta::new(order, false),
+            AccountMeta::new_readonly(merchant, false),
+            AccountMeta::new(order_payment_token, false),
+            AccountMeta::new(merchant_token, false),
             AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(sysvar::clock::id(), false),
@@ -266,7 +266,7 @@ mod test {
 
     async fn create_merchant_account(
         seed: Option<String>,
-        sponsor_pubkey: Option<&Pubkey>,
+        sponsor: Option<&Pubkey>,
     ) -> MerchantResult {
         let program_id = Pubkey::from_str(&"mosh111111111111111111111111111111111111111").unwrap();
 
@@ -294,7 +294,7 @@ mod test {
                 payer.pubkey(),
                 merchant_acc_pubkey,
                 Some(real_seed.to_string()),
-                sponsor_pubkey,
+                sponsor,
             )],
             Some(&payer.pubkey()),
         );
@@ -314,26 +314,26 @@ mod test {
         amount: u64,
         secret: &String,
         program_id: &Pubkey,
-        merchant_account_pubkey: &Pubkey,
-        buyer_token_pubkey: &Pubkey,
-        mint_pubkey: &Pubkey,
+        merchant: &Pubkey,
+        buyer_token: &Pubkey,
+        mint: &Pubkey,
         banks_client: &mut BanksClient,
         payer: &Keypair,
         recent_blockhash: Hash,
     ) -> (Pubkey, Pubkey) {
-        let order_acc_pubkey = get_order_account_pubkey(&order_id, &payer.pubkey(), program_id);
+        let order_acc = get_order_account_pubkey(&order_id, &payer.pubkey(), program_id);
         let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
 
-        let (seller_token_pubkey, _bump_seed) = Pubkey::find_program_address(
+        let (seller_token, _bump_seed) = Pubkey::find_program_address(
             &[
-                &order_acc_pubkey.to_bytes(),
+                &order_acc.to_bytes(),
                 &spl_token::id().to_bytes(),
-                &mint_pubkey.to_bytes(),
+                &mint.to_bytes(),
             ],
             program_id,
         );
 
-        let merchant_account = banks_client.get_account(*merchant_account_pubkey).await;
+        let merchant_account = banks_client.get_account(*merchant).await;
         let merchant_data = match merchant_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
@@ -350,13 +350,13 @@ mod test {
             &[express_checkout(
                 *program_id,
                 payer.pubkey(),
-                order_acc_pubkey,
-                *merchant_account_pubkey,
-                seller_token_pubkey,
-                *buyer_token_pubkey,
-                *mint_pubkey,
+                order_acc,
+                *merchant,
+                seller_token,
+                *buyer_token,
+                *mint,
                 Pubkey::from_str(PROGRAM_OWNER).unwrap(),
-                Pubkey::new_from_array(merchant_data.sponsor_pubkey),
+                Pubkey::new_from_array(merchant_data.sponsor),
                 pda,
                 amount,
                 (&order_id).to_string(),
@@ -367,7 +367,7 @@ mod test {
         transaction.sign(&[payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
 
-        (order_acc_pubkey, seller_token_pubkey)
+        (order_acc, seller_token)
     }
 
     async fn create_order(
@@ -413,7 +413,7 @@ mod test {
             Ok(())
         );
 
-        let (order_acc_pubkey, seller_account_pubkey) = create_order_account(
+        let (order_acc, seller_account) = create_order_account(
             &order_id,
             amount,
             &secret,
@@ -427,18 +427,18 @@ mod test {
         )
         .await;
 
-        (order_acc_pubkey, seller_account_pubkey, mint_keypair)
+        (order_acc, seller_account, mint_keypair)
     }
 
     #[tokio::test]
     async fn test_register_merchant() {
         let result = create_merchant_account(Option::None, Option::None).await;
         let program_id = result.0;
-        let merchant_pubkey = result.1;
+        let merchant = result.1;
         let mut banks_client = result.2;
         let payer = result.3;
         // test contents of merchant account
-        let merchant_account = banks_client.get_account(merchant_pubkey).await;
+        let merchant_account = banks_client.get_account(merchant).await;
         let merchant_account = match merchant_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
@@ -455,7 +455,7 @@ mod test {
         assert_eq!(true, merchant_data.is_initialized);
         assert_eq!(
             payer.pubkey(),
-            Pubkey::new_from_array(merchant_data.owner_pubkey)
+            Pubkey::new_from_array(merchant_data.owner)
         );
     }
 
@@ -463,11 +463,11 @@ mod test {
     async fn test_register_merchant_with_seed() {
         let result = create_merchant_account(Some("mosh".to_string()), Option::None).await;
         let program_id = result.0;
-        let merchant_pubkey = result.1;
+        let merchant = result.1;
         let mut banks_client = result.2;
         let payer = result.3;
         // test contents of merchant account
-        let merchant_account = banks_client.get_account(merchant_pubkey).await;
+        let merchant_account = banks_client.get_account(merchant).await;
         let merchant_account = match merchant_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
@@ -484,10 +484,10 @@ mod test {
         assert_eq!(true, merchant_data.is_initialized);
         assert_eq!(
             payer.pubkey(),
-            Pubkey::new_from_array(merchant_data.owner_pubkey)
+            Pubkey::new_from_array(merchant_data.owner)
         );
         assert_eq!(
-            merchant_pubkey,
+            merchant,
             Pubkey::create_with_seed(&payer.pubkey(), "mosh", &program_id).unwrap()
         )
     }
@@ -529,15 +529,15 @@ mod test {
         assert_eq!(OrderStatus::Paid as u8, order_data.status);
         assert_eq!(
             merchant_account_pubkey.to_bytes(),
-            order_data.merchant_pubkey
+            order_data.merchant
         );
-        assert_eq!(mint_keypair.pubkey().to_bytes(), order_data.mint_pubkey);
-        assert_eq!(seller_account_pubkey.to_bytes(), order_data.token_pubkey);
+        assert_eq!(mint_keypair.pubkey().to_bytes(), order_data.mint);
+        assert_eq!(seller_account_pubkey.to_bytes(), order_data.token);
         assert_eq!(
             merchant_account_pubkey.to_bytes(),
-            order_data.merchant_pubkey
+            order_data.merchant
         );
-        assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
+        assert_eq!(payer.pubkey().to_bytes(), order_data.payer);
         assert_eq!(amount, order_data.expected_amount);
         assert_eq!(amount, order_data.paid_amount);
         assert_eq!(order_id, order_data.order_id);
@@ -576,7 +576,7 @@ mod test {
         };
 
         let program_owner_key = Pubkey::from_str(PROGRAM_OWNER).unwrap();
-        let sponsor_pubkey = Pubkey::new_from_array(merchant_data.sponsor_pubkey);
+        let sponsor = Pubkey::new_from_array(merchant_data.sponsor);
 
         let program_owner_account = banks_client.get_account(program_owner_key).await;
         let program_owner_account = match program_owner_account {
@@ -587,13 +587,13 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
 
-        if sponsor_pubkey == program_owner_key {
+        if sponsor == program_owner_key {
             // test contents of program owner account
             assert_eq!(FEE_IN_LAMPORTS, program_owner_account.lamports);
         } else {
             // test contents of program owner account and sponsor account
             let (program_owner_fee, sponsor_fee) = get_amounts(FEE_IN_LAMPORTS, SPONSOR_FEE);
-            let sponsor_account = banks_client.get_account(sponsor_pubkey).await;
+            let sponsor_account = banks_client.get_account(sponsor).await;
             let sponsor_account = match sponsor_account {
                 Ok(data) => match data {
                     None => panic!("Oo"),
