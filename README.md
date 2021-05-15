@@ -35,7 +35,9 @@ Each merchant needs to register as a merchant with SolPayments by issuing a `Reg
 /// 2. `[]` System program
 /// 3. `[]` The rent sysvar
 /// 4. `[optional]` The sponsor account
-RegisterMerchant
+RegisterMerchant {
+  seed: Option<String>,
+},
 ```
 
 Under the hood, this results in an on-chain "Merchant Account" being created and controlled by the SolPayments program.

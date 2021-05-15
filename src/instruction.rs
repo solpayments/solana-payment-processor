@@ -171,7 +171,7 @@ mod test {
     use {
         super::*,
         crate::instruction::PaymentProcessorInstruction,
-        crate::processor::{MERCHANT, PDA_SEED, PROGRAM_OWNER},
+        crate::engine::constants::{MERCHANT, PDA_SEED, PROGRAM_OWNER},
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         crate::utils::get_order_account_pubkey,
         assert_matches::*,
