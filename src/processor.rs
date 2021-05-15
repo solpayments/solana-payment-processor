@@ -72,11 +72,6 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // test that merchant account pubkey is correct
-    let address_with_seed = Pubkey::create_with_seed(signer_info.key, MERCHANT, program_id)?;
-    if *merchant_info.key != address_with_seed {
-        return Err(ProgramError::InvalidSeeds);
-    }
     // create merchant account
     msg!("Creating merchant account on chain...");
     invoke(
