@@ -17,11 +17,20 @@ pub trait Serdes: Sized + BorshSerialize + BorshDeserialize {
     }
 }
 
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+pub enum MerchantStatus {
+    Uninitialized = 0,
+    Initialized = 1,
+}
+
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct MerchantAccount {
-    pub is_initialized: bool,
+    pub status: u8,
     pub owner: PublicKey,
     pub sponsor: PublicKey,
+    /// this is represented as a string but really is meant to hold JSON
+    /// found this to be a convenient hack to allow flexible data
+    pub data: String,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
@@ -54,12 +63,12 @@ impl Serdes for MerchantAccount {}
 
 impl IsInitialized for MerchantAccount {
     fn is_initialized(&self) -> bool {
-        self.is_initialized
+        self.status != MerchantStatus::Uninitialized as u8
     }
 }
 
 impl MerchantAccount {
-    pub const LEN: usize = size_of::<u8>() + size_of::<PublicKey>() + size_of::<PublicKey>();
+    pub const MIN_LEN: usize = size_of::<u8>() + size_of::<PublicKey>() + size_of::<PublicKey>();
 }
 
 // impl for OrderAccount
