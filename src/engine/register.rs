@@ -1,5 +1,5 @@
 use crate::{
-    engine::constants::{MERCHANT, PROGRAM_OWNER},
+    engine::constants::{MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER},
     state::{MerchantAccount, MerchantStatus, Serdes},
     utils::get_merchant_account_size,
 };
@@ -19,6 +19,7 @@ pub fn process_register_merchant(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     seed: Option<String>,
+    maybe_fee: Option<u64>,
     maybe_data: Option<String>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
@@ -74,6 +75,16 @@ pub fn process_register_merchant(
         sponsor: match possible_sponsor_info {
             Ok(sponsor_info) => sponsor_info.key.to_bytes(),
             Err(_error) => Pubkey::from_str(PROGRAM_OWNER).unwrap().to_bytes(),
+        },
+        fee: match maybe_fee {
+            None => MIN_FEE_IN_LAMPORTS,
+            Some(value) => {
+                let mut result = MIN_FEE_IN_LAMPORTS;
+                if value > MIN_FEE_IN_LAMPORTS {
+                    result = value;
+                }
+                result
+            },
         },
         data,
     };

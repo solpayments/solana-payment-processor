@@ -21,6 +21,9 @@ pub enum PaymentProcessorInstruction {
         /// the seed used when creating the account
         #[allow(dead_code)] // not dead code..
         seed: Option<String>,
+        /// the amount (in SOL lamports) that will be charged as a fee
+        #[allow(dead_code)] // not dead code..
+        fee: Option<u64>,
         /// the seed used when creating the account
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
@@ -78,6 +81,7 @@ pub fn register_merchant(
     signer: Pubkey,
     merchant: Pubkey,
     seed: Option<String>,
+    fee: Option<u64>,
     data: Option<String>,
     sponsor: Option<&Pubkey>,
 ) -> Instruction {
@@ -95,7 +99,7 @@ pub fn register_merchant(
     Instruction {
         program_id,
         accounts: account_metas,
-        data: PaymentProcessorInstruction::RegisterMerchant { seed, data }
+        data: PaymentProcessorInstruction::RegisterMerchant { seed, fee, data }
             .try_to_vec()
             .unwrap(),
     }
@@ -174,13 +178,12 @@ pub fn withdraw(
 mod test {
     use {
         super::*,
-        crate::engine::constants::{MERCHANT, PDA_SEED, PROGRAM_OWNER},
+        crate::engine::constants::{
+            MERCHANT, MIN_FEE_IN_LAMPORTS, PDA_SEED, PROGRAM_OWNER, SPONSOR_FEE,
+        },
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-        crate::utils::{
-            get_amounts, get_order_account_pubkey, get_order_account_size, FEE_IN_LAMPORTS,
-            SPONSOR_FEE,
-        },
+        crate::utils::{get_amounts, get_order_account_pubkey, get_order_account_size},
         assert_matches::*,
         serde_json::Value,
         solana_program::{
@@ -271,6 +274,7 @@ mod test {
 
     async fn create_merchant_account(
         seed: Option<String>,
+        fee: Option<u64>,
         sponsor: Option<&Pubkey>,
         data: Option<String>,
     ) -> MerchantResult {
@@ -300,6 +304,7 @@ mod test {
                 payer.pubkey(),
                 merchant_acc_pubkey,
                 Some(real_seed.to_string()),
+                fee,
                 data,
                 sponsor,
             )],
@@ -465,15 +470,21 @@ mod test {
 
     #[tokio::test]
     async fn test_register_merchant() {
-        let result = create_merchant_account(Option::None, Option::None, Option::None).await;
+        let result =
+            create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
         let merchant_data = run_merchant_tests(result).await;
         assert_eq!(String::from("{}"), merchant_data.data);
     }
 
     #[tokio::test]
     async fn test_register_merchant_with_seed() {
-        let result =
-            create_merchant_account(Some(String::from("mosh")), Option::None, Option::None).await;
+        let result = create_merchant_account(
+            Some(String::from("mosh")),
+            Option::None,
+            Option::None,
+            Option::None,
+        )
+        .await;
         let merchant = result.1;
         let payer = result.3;
         let program_id = result.0;
@@ -484,6 +495,15 @@ mod test {
     }
 
     #[tokio::test]
+    /// assert that the minimum fee is used when custom fee too low
+    async fn test_register_merchant_fee_default() {
+        let result =
+            create_merchant_account(Option::None, Some(10), Option::None, Option::None).await;
+        let merchant_data = run_merchant_tests(result).await;
+        assert_eq!(MIN_FEE_IN_LAMPORTS, merchant_data.fee);
+    }
+
+    #[tokio::test]
     async fn test_register_merchant_with_all_stuff() {
         let seed = String::from("mosh");
         let sponsor_pk = Pubkey::new_unique();
@@ -491,9 +511,11 @@ mod test {
             r#"{"code":200,"success":true,"payload":{"features":["awesome","easyAPI","lowLearningCurve"]}}"#,
         );
         let datas = data.clone();
-        let result = create_merchant_account(Some(seed), Some(&sponsor_pk), Some(data)).await;
+        let result =
+            create_merchant_account(Some(seed), Some(90000), Some(&sponsor_pk), Some(data)).await;
         let merchant_data = run_merchant_tests(result).await;
         assert_eq!(datas, merchant_data.data);
+        assert_eq!(90000, merchant_data.fee);
         assert_eq!(sponsor_pk, Pubkey::new_from_array(merchant_data.sponsor));
         // just for sanity verify that you can get some of the JSON values
         let json_value: Value = serde_json::from_str(&merchant_data.data).unwrap();
@@ -592,10 +614,10 @@ mod test {
 
         if sponsor == program_owner_key {
             // test contents of program owner account
-            assert_eq!(FEE_IN_LAMPORTS, program_owner_account.lamports);
+            assert_eq!(merchant_data.fee, program_owner_account.lamports);
         } else {
             // test contents of program owner account and sponsor account
-            let (program_owner_fee, sponsor_fee) = get_amounts(FEE_IN_LAMPORTS, SPONSOR_FEE);
+            let (program_owner_fee, sponsor_fee) = get_amounts(merchant_data.fee, SPONSOR_FEE);
             let sponsor_account = banks_client.get_account(sponsor).await;
             let sponsor_account = match sponsor_account {
                 Ok(data) => match data {
@@ -615,7 +637,7 @@ mod test {
         let order_id = String::from("1337");
         let secret = String::from("hunter2");
         let mut merchant_result =
-            create_merchant_account(Option::None, Option::None, Option::None).await;
+            create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
         let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
             create_order(amount, &order_id, &secret, &mut merchant_result).await;
 
@@ -632,13 +654,19 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_express_checkout_with_sponsor() {
+    /// test checkout with all merchant options
+    async fn test_express_checkout_with_all_options() {
         let sponsor_pk = Pubkey::new_unique();
         let amount: u64 = 2000000000;
         let order_id = String::from("123-SQT-MX");
         let secret = String::from("supersecret");
-        let mut merchant_result =
-            create_merchant_account(Option::None, Some(&sponsor_pk), Option::None).await;
+        let mut merchant_result = create_merchant_account(
+            Some(String::from("Oo")),
+            Some(123456),
+            Some(&sponsor_pk),
+            Some(String::from(r#"{"foo": "bar"}"#)),
+        )
+        .await;
         let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
             create_order(amount, &order_id, &secret, &mut merchant_result).await;
 
@@ -657,7 +685,7 @@ mod test {
     #[tokio::test]
     async fn test_withdraw() {
         let mut merchant_result =
-            create_merchant_account(Option::None, Option::None, Option::None).await;
+            create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
         let merchant_token_keypair = Keypair::new();
         let amount: u64 = 1234567890;
         let order_id = String::from("PD17CUSZ75");

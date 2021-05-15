@@ -1,12 +1,6 @@
+use crate::engine::constants::{MAX_SEED_LEN, STRING_SIZE};
 use crate::state::{MerchantAccount, OrderAccount};
 use solana_program::pubkey::Pubkey;
-
-/// maximum length of derived `Pubkey` seed
-const MAX_SEED_LEN: usize = 32;
-/// transaction fee percentage
-pub const FEE_IN_LAMPORTS: u64 = 5000;
-/// sponsor fee percentage
-pub const SPONSOR_FEE: u128 = 3;
 
 /// Given the expected amount, calculate the fee and take home amount
 /// Currently fee is 0.3% with a minimum fee of 1 lamport
@@ -26,9 +20,6 @@ pub fn get_amounts(amount: u64, fee_percentage: u128) -> (u64, u64) {
 
     (take_home_amount, fee_amount)
 }
-
-// these are purely by trial and error ... TODO: understand these some more
-const STRING_SIZE: usize = 4;
 
 /// get order account size
 pub fn get_order_account_size(order_id: &String, secret: &String) -> usize {
@@ -101,9 +92,9 @@ mod test {
 
     #[tokio::test]
     async fn test_get_merchant_account_size() {
-        assert_eq!(71, get_merchant_account_size(&String::from("{}")));
+        assert_eq!(79, get_merchant_account_size(&String::from("{}")));
         assert_eq!(
-            160,
+            168,
             get_merchant_account_size(&String::from(
                 r#"{"code":200,"success":true,"payload":{"features":["awesome","easyAPI","lowLearningCurve"]}}"#
             ))

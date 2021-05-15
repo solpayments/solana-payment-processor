@@ -1,8 +1,8 @@
 use crate::{
-    engine::constants::PROGRAM_OWNER,
+    engine::constants::{PROGRAM_OWNER, SPONSOR_FEE},
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::{get_amounts, get_order_account_size, FEE_IN_LAMPORTS, SPONSOR_FEE},
+    utils::{get_amounts, get_order_account_size},
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -79,8 +79,7 @@ pub fn process_express_checkout(
     // create order account
     let order_account_size = get_order_account_size(&order_id, &secret);
     // the order account amount includes the fee in SOL
-    let order_account_amount =
-        Rent::default().minimum_balance(order_account_size);
+    let order_account_amount = Rent::default().minimum_balance(order_account_size);
     msg!("Creating order account on chain...");
     invoke(
         &system_instruction::create_account_with_seed(
@@ -195,15 +194,14 @@ pub fn process_express_checkout(
         ],
     )?;
 
-    if Pubkey::new_from_array(merchant_account.sponsor)
-        == Pubkey::from_str(PROGRAM_OWNER).unwrap()
+    if Pubkey::new_from_array(merchant_account.sponsor) == Pubkey::from_str(PROGRAM_OWNER).unwrap()
     {
         msg!("Transferring processing fee to the program owner...");
         invoke(
             &system_instruction::transfer(
                 &signer_info.key,
                 program_owner_info.key,
-                FEE_IN_LAMPORTS,
+                merchant_account.fee,
             ),
             &[
                 signer_info.clone(),
@@ -213,7 +211,7 @@ pub fn process_express_checkout(
         )?;
     } else {
         // we need to pay both the program owner and the sponsor
-        let (program_owner_fee, sponsor_fee) = get_amounts(FEE_IN_LAMPORTS, SPONSOR_FEE);
+        let (program_owner_fee, sponsor_fee) = get_amounts(merchant_account.fee, SPONSOR_FEE);
         msg!("Transferring processing fee to the program owner and sponsor...");
         invoke(
             &system_instruction::transfer(

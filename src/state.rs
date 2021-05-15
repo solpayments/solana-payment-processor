@@ -28,6 +28,8 @@ pub struct MerchantAccount {
     pub status: u8,
     pub owner: PublicKey,
     pub sponsor: PublicKey,
+    /// represents the fee (in SOL lamports) that will be charged for transactions
+    pub fee: u64,
     /// this is represented as a string but really is meant to hold JSON
     /// found this to be a convenient hack to allow flexible data
     pub data: String,
@@ -68,7 +70,8 @@ impl IsInitialized for MerchantAccount {
 }
 
 impl MerchantAccount {
-    pub const MIN_LEN: usize = size_of::<u8>() + size_of::<PublicKey>() + size_of::<PublicKey>();
+    pub const MIN_LEN: usize =
+        size_of::<u8>() + size_of::<PublicKey>() + size_of::<PublicKey>() + size_of::<u64>();
 }
 
 // impl for OrderAccount

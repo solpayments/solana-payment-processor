@@ -18,9 +18,9 @@ impl PaymentProcessorInstruction {
         let instruction = PaymentProcessorInstruction::try_from_slice(&instruction_data)
             .map_err(|_| ProgramError::InvalidInstructionData)?;
         match instruction {
-            PaymentProcessorInstruction::RegisterMerchant { seed, data } => {
+            PaymentProcessorInstruction::RegisterMerchant { seed, fee, data } => {
                 msg!("Instruction: RegisterMerchant");
-                process_register_merchant(program_id, accounts, seed, data)
+                process_register_merchant(program_id, accounts, seed, fee, data)
             }
             PaymentProcessorInstruction::ExpressCheckout {
                 amount,
