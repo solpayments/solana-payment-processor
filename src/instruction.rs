@@ -173,7 +173,10 @@ mod test {
         crate::engine::constants::{MERCHANT, PDA_SEED, PROGRAM_OWNER},
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-        crate::utils::{get_order_account_pubkey, get_order_account_size, FEE_IN_LAMPORTS},
+        crate::utils::{
+            get_amounts, get_order_account_pubkey, get_order_account_size, FEE_IN_LAMPORTS,
+            SPONSOR_FEE,
+        },
         assert_matches::*,
         solana_program::{
             hash::Hash,
@@ -489,17 +492,15 @@ mod test {
         )
     }
 
-    #[tokio::test]
-    async fn test_express_checkout() {
-        let amount: u64 = 2000000000;
-        let order_id = String::from("1337");
-        let secret = String::from("hunter2");
-
-        let mut merchant_result = create_merchant_account(Option::None, Option::None).await;
-
-        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
-            create_order(amount, &order_id, &secret, &mut merchant_result).await;
-
+    async fn run_checkout_tests(
+        amount: u64,
+        order_id: String,
+        secret: String,
+        merchant_result: MerchantResult,
+        order_acc_pubkey: Pubkey,
+        seller_account_pubkey: Pubkey,
+        mint_keypair: Keypair,
+    ) {
         let program_id = merchant_result.0;
         let merchant_account_pubkey = merchant_result.1;
         let mut banks_client = merchant_result.2;
@@ -537,11 +538,11 @@ mod test {
             order_data.merchant_pubkey
         );
         assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
-        assert_eq!(2000000000, order_data.expected_amount);
-        assert_eq!(2000000000, order_data.paid_amount);
-        assert_eq!(5000, order_data.fee_amount);
-        assert_eq!(String::from("1337"), order_data.order_id);
-        assert_eq!(String::from("hunter2"), order_data.secret);
+        assert_eq!(amount, order_data.expected_amount);
+        assert_eq!(amount, order_data.paid_amount);
+        assert_eq!(FEE_IN_LAMPORTS, order_data.fee_amount);
+        assert_eq!(order_id, order_data.order_id);
+        assert_eq!(secret, order_data.secret);
 
         // test contents of seller token account
         let seller_token_account = banks_client.get_account(seller_account_pubkey).await;
@@ -558,13 +559,27 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
-        assert_eq!(2000000000, seller_account_data.amount);
+        assert_eq!(amount, seller_account_data.amount);
         assert_eq!(pda, seller_account_data.owner);
         assert_eq!(mint_keypair.pubkey(), seller_account_data.mint);
 
-        // test contents of program owner account
-        let program_owner_account =
-            banks_client.get_account(Pubkey::from_str(PROGRAM_OWNER).unwrap()).await;
+        // test that sponsor was saved okay
+        let merchant_account = banks_client.get_account(merchant_account_pubkey).await;
+        let merchant_data = match merchant_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => match MerchantAccount::unpack(&value.data) {
+                    Ok(data) => data,
+                    Err(error) => panic!("Problem: {:?}", error),
+                },
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+
+        let program_owner_key = Pubkey::from_str(PROGRAM_OWNER).unwrap();
+        let sponsor_pubkey = Pubkey::new_from_array(merchant_data.sponsor_pubkey);
+
+        let program_owner_account = banks_client.get_account(program_owner_key).await;
         let program_owner_account = match program_owner_account {
             Ok(data) => match data {
                 None => panic!("Oo"),
@@ -572,7 +587,67 @@ mod test {
             },
             Err(error) => panic!("Problem: {:?}", error),
         };
-        assert_eq!(FEE_IN_LAMPORTS, program_owner_account.lamports);
+
+        if sponsor_pubkey == program_owner_key {
+            // test contents of program owner account
+            assert_eq!(FEE_IN_LAMPORTS, program_owner_account.lamports);
+        } else {
+            // test contents of program owner account and sponsor account
+            let (program_owner_fee, sponsor_fee) = get_amounts(FEE_IN_LAMPORTS, SPONSOR_FEE);
+            let sponsor_account = banks_client.get_account(sponsor_pubkey).await;
+            let sponsor_account = match sponsor_account {
+                Ok(data) => match data {
+                    None => panic!("Oo"),
+                    Some(value) => value,
+                },
+                Err(error) => panic!("Problem: {:?}", error),
+            };
+            assert_eq!(program_owner_fee, program_owner_account.lamports);
+            assert_eq!(sponsor_fee, sponsor_account.lamports);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_express_checkout() {
+        let amount: u64 = 2000000000;
+        let order_id = String::from("1337");
+        let secret = String::from("hunter2");
+        let mut merchant_result = create_merchant_account(Option::None, Option::None).await;
+        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
+            create_order(amount, &order_id, &secret, &mut merchant_result).await;
+
+        run_checkout_tests(
+            amount,
+            order_id,
+            secret,
+            merchant_result,
+            order_acc_pubkey,
+            seller_account_pubkey,
+            mint_keypair,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_express_checkout_with_sponsor() {
+        let sponsor_pk = Pubkey::new_unique();
+        let amount: u64 = 2000000000;
+        let order_id = String::from("123-SQT-MX");
+        let secret = String::from("supersecret");
+        let mut merchant_result = create_merchant_account(Option::None, Some(&sponsor_pk)).await;
+        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
+            create_order(amount, &order_id, &secret, &mut merchant_result).await;
+
+        run_checkout_tests(
+            amount,
+            order_id,
+            secret,
+            merchant_result,
+            order_acc_pubkey,
+            seller_account_pubkey,
+            mint_keypair,
+        )
+        .await;
     }
 
     #[tokio::test]
