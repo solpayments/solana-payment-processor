@@ -1,7 +1,7 @@
 use crate::{
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::{get_amounts, get_order_account_size, FEE},
+    utils::{get_order_account_size, FEE_IN_LAMPORTS},
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -66,6 +66,8 @@ pub fn process_express_checkout(
     }
     // create order account
     let order_account_size = get_order_account_size(&order_id, &secret);
+    // the order account amount includes the fee in SOL
+    let order_account_amount = Rent::default().minimum_balance(order_account_size) + FEE_IN_LAMPORTS;
     msg!("Creating order account on chain...");
     invoke(
         &system_instruction::create_account_with_seed(
@@ -73,7 +75,7 @@ pub fn process_express_checkout(
             order_info.key,
             signer_info.key,
             &order_id,
-            Rent::default().minimum_balance(order_account_size),
+            order_account_amount,
             order_account_size as u64,
             program_id,
         ),
@@ -180,9 +182,6 @@ pub fn process_express_checkout(
         ],
     )?;
 
-    // Get fee and take home amount
-    let (take_home_amount, fee_amount) = get_amounts(amount, FEE);
-
     // get the order account
     // TODO: ensure this account is not already initialized
     let mut order_account_data = order_info.try_borrow_mut_data()?;
@@ -197,8 +196,7 @@ pub fn process_express_checkout(
         payer_pubkey: signer_info.key.to_bytes(),
         expected_amount: amount,
         paid_amount: amount,
-        take_home_amount,
-        fee_amount: fee_amount as u64,
+        fee_amount: FEE_IN_LAMPORTS,
         order_id,
         secret,
     };

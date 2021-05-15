@@ -173,7 +173,7 @@ mod test {
         crate::engine::constants::{MERCHANT, PDA_SEED, PROGRAM_OWNER},
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-        crate::utils::get_order_account_pubkey,
+        crate::utils::{get_order_account_pubkey, get_order_account_size, FEE_IN_LAMPORTS},
         assert_matches::*,
         solana_program::{
             hash::Hash,
@@ -477,7 +477,7 @@ mod test {
 
     #[tokio::test]
     async fn test_express_checkout() {
-        let amount: u64 = 2000;
+        let amount: u64 = 2000000000;
         let order_id = String::from("1337");
         let secret = String::from("hunter2");
 
@@ -501,6 +501,11 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(order_account.owner, program_id);
+        assert_eq!(
+            order_account.lamports,
+            Rent::default().minimum_balance(get_order_account_size(&order_id, &secret))
+                + FEE_IN_LAMPORTS
+        );
         let order_data = OrderAccount::unpack(&order_account.data);
         let order_data = match order_data {
             Ok(data) => data,
@@ -519,10 +524,9 @@ mod test {
             order_data.merchant_pubkey
         );
         assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
-        assert_eq!(2000, order_data.expected_amount);
-        assert_eq!(2000, order_data.paid_amount);
-        assert_eq!(1994, order_data.take_home_amount);
-        assert_eq!(6, order_data.fee_amount);
+        assert_eq!(2000000000, order_data.expected_amount);
+        assert_eq!(2000000000, order_data.paid_amount);
+        assert_eq!(5000, order_data.fee_amount);
         assert_eq!(String::from("1337"), order_data.order_id);
         assert_eq!(String::from("hunter2"), order_data.secret);
 
@@ -541,7 +545,7 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
-        assert_eq!(2000, seller_account_data.amount);
+        assert_eq!(2000000000, seller_account_data.amount);
         assert_eq!(pda, seller_account_data.owner);
         assert_eq!(mint_keypair.pubkey(), seller_account_data.mint);
     }
@@ -640,7 +644,6 @@ mod test {
         assert_eq!(amount, order_data.paid_amount);
         assert_eq!(order_id, order_data.order_id);
         assert_eq!(secret, order_data.secret);
-        assert_eq!(1230864187, order_data.take_home_amount);
         assert_eq!(3703703, order_data.fee_amount);
 
         // test contents of merchant token account
@@ -657,10 +660,6 @@ mod test {
             },
             Err(error) => panic!("Problem: {:?}", error),
         };
-        assert_eq!(
-            order_data.take_home_amount + 99,
-            merchant_account_data.amount
-        );
 
         // test contents of program owner token account
         let program_owner_token_account =
@@ -809,7 +808,6 @@ mod test {
         assert_eq!(amount, order_data.paid_amount);
         assert_eq!(order_id, order_data.order_id);
         assert_eq!(secret, order_data.secret);
-        assert_eq!(79760000000, order_data.take_home_amount);
         assert_eq!(240000000, order_data.fee_amount);
 
         // test contents of merchant token account
@@ -826,10 +824,6 @@ mod test {
             },
             Err(error) => panic!("Problem: {:?}", error),
         };
-        assert_eq!(
-            order_data.take_home_amount + 99,
-            merchant_account_data.amount
-        );
 
         // test contents of program owner token account
         let program_owner_token_account =

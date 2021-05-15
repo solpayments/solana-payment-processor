@@ -4,7 +4,7 @@ use solana_program::pubkey::Pubkey;
 /// maximum length of derived `Pubkey` seed
 const MAX_SEED_LEN: usize = 32;
 /// transaction fee percentage
-pub const FEE: u128 = 3;
+pub const FEE_IN_LAMPORTS: u64 = 5000;
 /// sponsor fee percentage
 pub const SPONSOR_FEE: u128 = 3;
 
@@ -50,14 +50,14 @@ mod test {
 
     #[tokio::test]
     async fn test_get_amounts() {
-        assert_eq!((997000000, 3000000), get_amounts(1000000000, FEE));
-        assert_eq!((1994000, 6000), get_amounts(2000000, FEE));
-        assert_eq!((1994, 6), get_amounts(2000, FEE));
-        assert_eq!((100, 1), get_amounts(101, FEE));
-        assert_eq!((99, 1), get_amounts(100, FEE));
-        assert_eq!((99, 0), get_amounts(99, FEE));
-        assert_eq!((80, 0), get_amounts(80, FEE));
-        assert_eq!((0, 0), get_amounts(0, FEE));
+        assert_eq!((997000000, 3000000), get_amounts(1000000000, 3));
+        assert_eq!((1994000, 6000), get_amounts(2000000, 3));
+        assert_eq!((1994, 6), get_amounts(2000, 3));
+        assert_eq!((100, 1), get_amounts(101, 3));
+        assert_eq!((99, 1), get_amounts(100, 3));
+        assert_eq!((99, 0), get_amounts(99, 3));
+        assert_eq!((80, 0), get_amounts(80, 3));
+        assert_eq!((0, 0), get_amounts(0, 3));
         assert_eq!((990, 10), get_amounts(1000, 10));
         assert_eq!((996, 4), get_amounts(1000, 4));
     }
@@ -65,14 +65,14 @@ mod test {
     #[tokio::test]
     async fn test_get_order_account_size() {
         assert_eq!(
-            199,
+            191,
             get_order_account_size(&String::from("123456"), &String::from("password"))
         );
         assert_eq!(
-            191,
+            183,
             get_order_account_size(&String::from("test-6"), &String::from(""))
         );
-        assert_eq!(424, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type")));
+        assert_eq!(416, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type")));
     }
 
     #[tokio::test]
