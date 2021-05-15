@@ -81,22 +81,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     if order_account.status != OrderStatus::Paid as u8 {
         return Err(PaymentProcessorError::AlreadyWithdrawn.into());
     }
-    // transfer amount less fees to merchant
-    // TODO: is this necessary?
-    let (associated_token_address, _bump_seed) = Pubkey::find_program_address(
-        &[
-            &order_info.key.to_bytes(),
-            &spl_token::id().to_bytes(),
-            &order_account.mint_pubkey,
-        ],
-        program_id,
-    );
-    // assert that the derived address matches the one supplied
-    if associated_token_address != *order_payment_token_info.key {
-        msg!("Error: Associated address does not match seed derivation");
-        return Err(ProgramError::InvalidSeeds);
-    }
-
+    // transfer amount to merchant
     msg!("Transferring payment to the merchant...");
     invoke_signed(
         &spl_token::instruction::transfer(
