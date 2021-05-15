@@ -37,9 +37,9 @@ impl PaymentProcessorInstruction {
         let instruction = PaymentProcessorInstruction::try_from_slice(&instruction_data)
             .map_err(|_| ProgramError::InvalidInstructionData)?;
         match instruction {
-            PaymentProcessorInstruction::RegisterMerchant => {
+            PaymentProcessorInstruction::RegisterMerchant { seed } => {
                 msg!("Instruction: RegisterMerchant");
-                process_register_merchant(program_id, accounts)
+                process_register_merchant(program_id, accounts, seed)
             }
             PaymentProcessorInstruction::ExpressCheckout {
                 amount,
@@ -57,7 +57,11 @@ impl PaymentProcessorInstruction {
     }
 }
 
-pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+pub fn process_register_merchant(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    seed: Option<String>,
+) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
     let signer_info = next_account_info(account_info_iter)?;
@@ -79,7 +83,10 @@ pub fn process_register_merchant(program_id: &Pubkey, accounts: &[AccountInfo]) 
             signer_info.key,
             merchant_info.key,
             signer_info.key,
-            MERCHANT,
+            match &seed {
+                None => MERCHANT,
+                Some(value) => &value,
+            },
             Rent::default().minimum_balance(MerchantAccount::LEN),
             MerchantAccount::LEN.try_into().unwrap(),
             program_id,

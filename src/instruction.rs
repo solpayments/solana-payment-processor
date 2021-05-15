@@ -17,7 +17,11 @@ pub enum PaymentProcessorInstruction {
     /// 2. `[]` System program
     /// 3. `[]` The rent sysvar
     /// 4. `[optional]` The sponsor account
-    RegisterMerchant,
+    RegisterMerchant {
+        /// the seed used when creating the account
+        #[allow(dead_code)] // not dead code..
+        seed: Option<String>,
+    },
     /// Express Checkout - create order and pay for it in one transaction
     ///
     /// Accounts expected:
@@ -70,6 +74,7 @@ pub fn register_merchant(
     program_id: Pubkey,
     signer_pubkey: Pubkey,
     merchant_acc_pubkey: Pubkey,
+    seed: Option<String>,
     sponsor_pubkey: Option<&Pubkey>,
 ) -> Instruction {
     let mut account_metas = vec![
@@ -86,7 +91,7 @@ pub fn register_merchant(
     Instruction {
         program_id,
         accounts: account_metas,
-        data: PaymentProcessorInstruction::RegisterMerchant
+        data: PaymentProcessorInstruction::RegisterMerchant { seed }
             .try_to_vec()
             .unwrap(),
     }
@@ -277,6 +282,7 @@ mod test {
                 program_id,
                 payer.pubkey(),
                 merchant_acc_pubkey,
+                Some(MERCHANT.to_string()),
                 sponsor_pubkey,
             )],
             Some(&payer.pubkey()),
