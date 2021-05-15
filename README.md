@@ -56,12 +56,14 @@ Next, a person who wishes to make a payment to the merchant can issue an `Expres
 /// 2. `[]` The merchant account.  Owned by this program
 /// 3. `[writable]` The seller token account - this is where the amount paid will go. Owned by this program
 /// 4. `[writable]` The buyer token account
-/// 5. `[]` The token mint account - represents the 'currency' being used
-/// 6. `[]` This program's derived address
-/// 7. `[]` The token program
-/// 8. `[]` The System program
-/// 9. `[]` The clock sysvar
-/// 10. `[]` The rent sysvar
+/// 5. `[writable]` The program owner account (where we will send program owner fee)
+/// 6. `[writable]` The sponsor account (where we will send sponsor fee)
+/// 7. `[]` The token mint account - represents the 'currency' being used
+/// 8. `[]` This program's derived address
+/// 9. `[]` The token program
+/// 10. `[]` The System program
+/// 11. `[]` The clock sysvar
+/// 12. `[]` The rent sysvar
 ExpressCheckout {
     amount: u64,
     /// the pubkey of the merchant -> this is where the money is to be sent
@@ -96,11 +98,9 @@ Finally, whenever ready anyone can execute a `Withdraw` instruction which will r
 /// 2. `[]` The merchant account.  Owned by this program
 /// 3. `[writable]` The order token account (where the money was put during payment)
 /// 4. `[writable]` The merchant token account (where we will withdraw to)
-/// 5. `[writable]` The program owner token account (where we will send program owner fee)
-/// 6. `[writable]` The sponsor token account (where we will send sponsor fee)
-/// 7. `[]` This program's derived address
-/// 8. `[]` The token program
-/// 9. `[]` The clock sysvar
+/// 5. `[]` This program's derived address
+/// 6. `[]` The token program
+/// 7. `[]` The clock sysvar
 Withdraw
 ```
 
