@@ -31,12 +31,14 @@ pub enum PaymentProcessorInstruction {
     /// 2. `[]` The merchant account.  Owned by this program
     /// 3. `[writable]` The seller token account - this is where the amount paid will go. Owned by this program
     /// 4. `[writable]` The buyer token account
-    /// 5. `[]` The token mint account - represents the 'currency' being used
-    /// 6. `[]` This program's derived address
-    /// 7. `[]` The token program
-    /// 8. `[]` The System program
-    /// 9. `[]` The clock sysvar
-    /// 10. `[]` The rent sysvar
+    /// 5. `[writable]` The program owner account (where we will send program owner fee)
+    /// 6. `[writable]` The sponsor account (where we will send sponsor fee)
+    /// 7. `[]` The token mint account - represents the 'currency' being used
+    /// 8. `[]` This program's derived address
+    /// 9. `[]` The token program
+    /// 10. `[]` The System program
+    /// 11. `[]` The clock sysvar
+    /// 12. `[]` The rent sysvar
     ExpressCheckout {
         #[allow(dead_code)] // not dead code..
         amount: u64,
@@ -106,6 +108,8 @@ pub fn express_checkout(
     seller_token_account_pubkey: Pubkey,
     buyer_token_account_pubkey: Pubkey,
     mint_pubkey: Pubkey,
+    program_ownwer_account_pubkey: Pubkey,
+    sponsor_account_pubkey: Pubkey,
     pda: Pubkey,
     amount: u64,
     order_id: String,
@@ -119,6 +123,8 @@ pub fn express_checkout(
             AccountMeta::new_readonly(merchant_account_pubkey, false),
             AccountMeta::new(seller_token_account_pubkey, false),
             AccountMeta::new(buyer_token_account_pubkey, false),
+            AccountMeta::new(program_ownwer_account_pubkey, false),
+            AccountMeta::new(sponsor_account_pubkey, false),
             AccountMeta::new_readonly(mint_pubkey, false),
             AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
@@ -330,6 +336,18 @@ mod test {
             program_id,
         );
 
+        let merchant_account = banks_client.get_account(*merchant_account_pubkey).await;
+        let merchant_data = match merchant_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => match MerchantAccount::unpack(&value.data) {
+                    Ok(data) => data,
+                    Err(error) => panic!("Problem: {:?}", error),
+                },
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+
         // call express checkout ix
         let mut transaction = Transaction::new_with_payer(
             &[express_checkout(
@@ -340,6 +358,8 @@ mod test {
                 seller_token_pubkey,
                 *buyer_token_pubkey,
                 *mint_pubkey,
+                Pubkey::from_str(PROGRAM_OWNER).unwrap(),
+                Pubkey::new_from_array(merchant_data.sponsor_pubkey),
                 pda,
                 amount,
                 (&order_id).to_string(),
@@ -504,7 +524,6 @@ mod test {
         assert_eq!(
             order_account.lamports,
             Rent::default().minimum_balance(get_order_account_size(&order_id, &secret))
-                + FEE_IN_LAMPORTS
         );
         let order_data = OrderAccount::unpack(&order_account.data);
         let order_data = match order_data {

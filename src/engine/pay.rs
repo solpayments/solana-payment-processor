@@ -1,7 +1,8 @@
 use crate::{
+    engine::constants::PROGRAM_OWNER,
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::{get_order_account_size, FEE_IN_LAMPORTS},
+    utils::{get_amounts, get_order_account_size, FEE_IN_LAMPORTS, SPONSOR_FEE},
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -17,6 +18,7 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 use spl_token::{self, state::Account as TokenAccount};
+use std::str::FromStr;
 
 pub fn process_express_checkout(
     program_id: &Pubkey,
@@ -32,6 +34,8 @@ pub fn process_express_checkout(
     let merchant_info = next_account_info(account_info_iter)?;
     let seller_token_info = next_account_info(account_info_iter)?;
     let buyer_token_info = next_account_info(account_info_iter)?;
+    let program_owner_info = next_account_info(account_info_iter)?;
+    let sponsor_info = next_account_info(account_info_iter)?;
     let mint_info = next_account_info(account_info_iter)?;
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
@@ -64,10 +68,19 @@ pub fn process_express_checkout(
     if *mint_info.key != buyer_token_data.mint {
         return Err(PaymentProcessorError::MintNotEqual.into());
     }
+    // check that provided program owner is correct
+    if *program_owner_info.key != Pubkey::from_str(PROGRAM_OWNER).unwrap() {
+        return Err(PaymentProcessorError::WrongProgramOwner.into());
+    }
+    // check that the provided sponsor is correct
+    if *sponsor_info.key != Pubkey::new_from_array(merchant_account.sponsor_pubkey) {
+        return Err(PaymentProcessorError::WrongSponsor.into());
+    }
     // create order account
     let order_account_size = get_order_account_size(&order_id, &secret);
     // the order account amount includes the fee in SOL
-    let order_account_amount = Rent::default().minimum_balance(order_account_size) + FEE_IN_LAMPORTS;
+    let order_account_amount =
+        Rent::default().minimum_balance(order_account_size);
     msg!("Creating order account on chain...");
     invoke(
         &system_instruction::create_account_with_seed(
@@ -181,6 +194,48 @@ pub fn process_express_checkout(
             token_program_info.clone(),
         ],
     )?;
+
+    if Pubkey::new_from_array(merchant_account.sponsor_pubkey)
+        == Pubkey::from_str(PROGRAM_OWNER).unwrap()
+    {
+        msg!("Transferring processing fee to the program owner...");
+        invoke(
+            &system_instruction::transfer(
+                &signer_info.key,
+                program_owner_info.key,
+                FEE_IN_LAMPORTS,
+            ),
+            &[
+                signer_info.clone(),
+                program_owner_info.clone(),
+                system_program_info.clone(),
+            ],
+        )?;
+    } else {
+        // we need to pay both the program owner and the sponsor
+        let (program_owner_fee, sponsor_fee) = get_amounts(FEE_IN_LAMPORTS, SPONSOR_FEE);
+        msg!("Transferring processing fee to the program owner and sponsor...");
+        invoke(
+            &system_instruction::transfer(
+                &signer_info.key,
+                program_owner_info.key,
+                program_owner_fee,
+            ),
+            &[
+                signer_info.clone(),
+                program_owner_info.clone(),
+                system_program_info.clone(),
+            ],
+        )?;
+        invoke(
+            &system_instruction::transfer(&signer_info.key, sponsor_info.key, sponsor_fee),
+            &[
+                signer_info.clone(),
+                sponsor_info.clone(),
+                system_program_info.clone(),
+            ],
+        )?;
+    }
 
     // get the order account
     // TODO: ensure this account is not already initialized
