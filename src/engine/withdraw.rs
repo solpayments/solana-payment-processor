@@ -1,8 +1,7 @@
 use crate::{
-    engine::constants::{PDA_SEED, PROGRAM_OWNER},
+    engine::constants::{PDA_SEED},
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
-    utils::{get_amounts, SPONSOR_FEE},
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -17,7 +16,6 @@ use solana_program::{
     sysvar::{Sysvar},
 };
 use spl_token::{self, state::Account as TokenAccount};
-use std::str::FromStr;
 
 pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
