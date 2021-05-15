@@ -36,8 +36,13 @@ Each merchant needs to register as a merchant with SolPayments by issuing a `Reg
 /// 3. `[]` The rent sysvar
 /// 4. `[optional]` The sponsor account
 RegisterMerchant {
-  seed: Option<String>,
-},
+    /// the seed used when creating the account
+    seed: Option<String>,
+    /// the amount (in SOL lamports) that will be charged as a fee
+    fee: Option<u64>,
+    /// the seed used when creating the account
+    data: Option<String>,
+}
 ```
 
 Under the hood, this results in an on-chain "Merchant Account" being created and controlled by the SolPayments program.
