@@ -251,7 +251,6 @@ pub fn process_express_checkout(
         payer_pubkey: signer_info.key.to_bytes(),
         expected_amount: amount,
         paid_amount: amount,
-        fee_amount: FEE_IN_LAMPORTS,
         order_id,
         secret,
     };

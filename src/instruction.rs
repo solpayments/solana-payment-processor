@@ -540,7 +540,6 @@ mod test {
         assert_eq!(payer.pubkey().to_bytes(), order_data.payer_pubkey);
         assert_eq!(amount, order_data.expected_amount);
         assert_eq!(amount, order_data.paid_amount);
-        assert_eq!(FEE_IN_LAMPORTS, order_data.fee_amount);
         assert_eq!(order_id, order_data.order_id);
         assert_eq!(secret, order_data.secret);
 
@@ -722,7 +721,6 @@ mod test {
         assert_eq!(amount, order_data.paid_amount);
         assert_eq!(order_id, order_data.order_id);
         assert_eq!(secret, order_data.secret);
-        assert_eq!(FEE_IN_LAMPORTS, order_data.fee_amount);
 
         // test contents of merchant token account
         let merchant_token_account = banks_client
