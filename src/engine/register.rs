@@ -1,25 +1,25 @@
 use crate::{
     engine::constants::{MERCHANT, PROGRAM_OWNER},
-    state::{MerchantAccount, Serdes},
+    state::{MerchantAccount, MerchantStatus, Serdes},
+    utils::get_merchant_account_size,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program::{invoke},
+    program::invoke,
     program_error::ProgramError,
-    program_pack::IsInitialized,
     pubkey::Pubkey,
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
-use std::convert::TryInto;
 use std::str::FromStr;
 
 pub fn process_register_merchant(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     seed: Option<String>,
+    maybe_data: Option<String>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -35,6 +35,12 @@ pub fn process_register_merchant(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
+    let data = match maybe_data {
+        None => String::from("{}"),
+        Some(value) => value,
+    };
+    let account_size = get_merchant_account_size(&data);
+
     // create merchant account
     msg!("Creating merchant account on chain...");
     invoke(
@@ -46,8 +52,8 @@ pub fn process_register_merchant(
                 None => MERCHANT,
                 Some(value) => &value,
             },
-            Rent::default().minimum_balance(MerchantAccount::LEN),
-            MerchantAccount::LEN.try_into().unwrap(),
+            Rent::default().minimum_balance(account_size),
+            account_size as u64,
             program_id,
         ),
         &[
@@ -58,26 +64,26 @@ pub fn process_register_merchant(
         ],
     )?;
 
+    // get the merchant account data
+    // TODO: ensure this account is not already initialized
+    let mut merchant_account_data = merchant_info.try_borrow_mut_data()?;
+    // save it
+    let merchant = MerchantAccount {
+        status: MerchantStatus::Initialized as u8,
+        owner: signer_info.key.to_bytes(),
+        sponsor: match possible_sponsor_info {
+            Ok(sponsor_info) => sponsor_info.key.to_bytes(),
+            Err(_error) => Pubkey::from_str(PROGRAM_OWNER).unwrap().to_bytes(),
+        },
+        data,
+    };
+
+    merchant.pack(&mut merchant_account_data);
+
     // ensure merchant account is rent exempt
-    if !rent.is_exempt(merchant_info.lamports(), MerchantAccount::LEN) {
+    if !rent.is_exempt(merchant_info.lamports(), account_size) {
         return Err(ProgramError::AccountNotRentExempt);
     }
-
-    // get the merchant account data
-    let mut merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
-    if merchant_account.is_initialized() {
-        return Err(ProgramError::AccountAlreadyInitialized);
-    }
-
-    // create the MerchantAccount object
-    merchant_account.is_initialized = true;
-    merchant_account.owner = signer_info.key.to_bytes();
-    // set the sponsor as provided or default to the program owner
-    merchant_account.sponsor = match possible_sponsor_info {
-        Ok(sponsor_info) => sponsor_info.key.to_bytes(),
-        Err(_error) => Pubkey::from_str(PROGRAM_OWNER).unwrap().to_bytes(),
-    };
-    MerchantAccount::pack(&merchant_account, &mut merchant_info.data.borrow_mut());
 
     Ok(())
 }

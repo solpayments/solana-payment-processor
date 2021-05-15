@@ -1,15 +1,10 @@
 use crate::{
-    engine::register::process_register_merchant,
-    engine::withdraw::process_withdraw_payment,
-    engine::pay::process_express_checkout,
-    instruction::PaymentProcessorInstruction,
+    engine::pay::process_express_checkout, engine::register::process_register_merchant,
+    engine::withdraw::process_withdraw_payment, instruction::PaymentProcessorInstruction,
 };
 use borsh::BorshDeserialize;
 use solana_program::{
-    account_info::{AccountInfo},
-    entrypoint::ProgramResult,
-    msg,
-    program_error::ProgramError,
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -23,9 +18,9 @@ impl PaymentProcessorInstruction {
         let instruction = PaymentProcessorInstruction::try_from_slice(&instruction_data)
             .map_err(|_| ProgramError::InvalidInstructionData)?;
         match instruction {
-            PaymentProcessorInstruction::RegisterMerchant { seed } => {
+            PaymentProcessorInstruction::RegisterMerchant { seed, data } => {
                 msg!("Instruction: RegisterMerchant");
-                process_register_merchant(program_id, accounts, seed)
+                process_register_merchant(program_id, accounts, seed, data)
             }
             PaymentProcessorInstruction::ExpressCheckout {
                 amount,
