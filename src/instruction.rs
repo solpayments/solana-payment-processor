@@ -170,8 +170,8 @@ pub fn withdraw(
 mod test {
     use {
         super::*,
-        crate::instruction::PaymentProcessorInstruction,
         crate::engine::constants::{MERCHANT, PDA_SEED, PROGRAM_OWNER},
+        crate::instruction::PaymentProcessorInstruction,
         crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
         crate::utils::get_order_account_pubkey,
         assert_matches::*,
@@ -261,7 +261,10 @@ mod test {
         transaction
     }
 
-    async fn create_merchant_account(sponsor_pubkey: Option<&Pubkey>) -> MerchantResult {
+    async fn create_merchant_account(
+        seed: Option<String>,
+        sponsor_pubkey: Option<&Pubkey>,
+    ) -> MerchantResult {
         let program_id = Pubkey::from_str(&"mosh111111111111111111111111111111111111111").unwrap();
 
         let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
@@ -272,9 +275,14 @@ mod test {
         .start()
         .await;
 
+        let real_seed = match &seed {
+            None => MERCHANT,
+            Some(value) => &value,
+        };
+
         // first we create a public key for the merchant account
         let merchant_acc_pubkey =
-            Pubkey::create_with_seed(&payer.pubkey(), MERCHANT, &program_id).unwrap();
+            Pubkey::create_with_seed(&payer.pubkey(), real_seed, &program_id).unwrap();
 
         // then call register merchant ix
         let mut transaction = Transaction::new_with_payer(
@@ -282,7 +290,7 @@ mod test {
                 program_id,
                 payer.pubkey(),
                 merchant_acc_pubkey,
-                Some(MERCHANT.to_string()),
+                Some(real_seed.to_string()),
                 sponsor_pubkey,
             )],
             Some(&payer.pubkey()),
@@ -407,7 +415,7 @@ mod test {
 
     #[tokio::test]
     async fn test_register_merchant() {
-        let result = create_merchant_account(Option::None).await;
+        let result = create_merchant_account(Option::None, Option::None).await;
         let program_id = result.0;
         let merchant_pubkey = result.1;
         let mut banks_client = result.2;
@@ -435,12 +443,45 @@ mod test {
     }
 
     #[tokio::test]
+    async fn test_register_merchant_with_seed() {
+        let result = create_merchant_account(Some("mosh".to_string()), Option::None).await;
+        let program_id = result.0;
+        let merchant_pubkey = result.1;
+        let mut banks_client = result.2;
+        let payer = result.3;
+        // test contents of merchant account
+        let merchant_account = banks_client.get_account(merchant_pubkey).await;
+        let merchant_account = match merchant_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => value,
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(merchant_account.owner, program_id);
+        let merchant_data = MerchantAccount::unpack(&merchant_account.data);
+        let merchant_data = match merchant_data {
+            Ok(data) => data,
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(true, merchant_data.is_initialized);
+        assert_eq!(
+            payer.pubkey(),
+            Pubkey::new_from_array(merchant_data.owner_pubkey)
+        );
+        assert_eq!(
+            merchant_pubkey,
+            Pubkey::create_with_seed(&payer.pubkey(), "mosh", &program_id).unwrap()
+        )
+    }
+
+    #[tokio::test]
     async fn test_express_checkout() {
         let amount: u64 = 2000;
         let order_id = String::from("1337");
         let secret = String::from("hunter2");
 
-        let mut merchant_result = create_merchant_account(Option::None).await;
+        let mut merchant_result = create_merchant_account(Option::None, Option::None).await;
 
         let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
             create_order(amount, &order_id, &secret, &mut merchant_result).await;
@@ -507,7 +548,7 @@ mod test {
 
     #[tokio::test]
     async fn test_withdraw() {
-        let mut merchant_result = create_merchant_account(Option::None).await;
+        let mut merchant_result = create_merchant_account(Option::None, Option::None).await;
         let merchant_token_keypair = Keypair::new();
         let amount: u64 = 1234567890;
         let order_id = String::from("PD17CUSZ75");
@@ -641,7 +682,7 @@ mod test {
     async fn test_withdraw_with_sponsor() {
         let sponsor_pk = Pubkey::new_unique();
 
-        let mut merchant_result = create_merchant_account(Some(&sponsor_pk)).await;
+        let mut merchant_result = create_merchant_account(Some("iloveoov".to_string()), Some(&sponsor_pk)).await;
         let merchant_token_keypair = Keypair::new();
         let amount: u64 = 80000000000;
         let order_id = String::from("xyz23A2");
