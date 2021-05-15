@@ -1,4 +1,4 @@
-use crate::state::OrderAccount;
+use crate::state::{MerchantAccount, OrderAccount};
 use solana_program::pubkey::Pubkey;
 
 /// maximum length of derived `Pubkey` seed
@@ -27,9 +27,21 @@ pub fn get_amounts(amount: u64, fee_percentage: u128) -> (u64, u64) {
     (take_home_amount, fee_amount)
 }
 
+// these are purely by trial and error ... TODO: understand these some more
+const STRING_SIZE: usize = 4;
+
 /// get order account size
 pub fn get_order_account_size(order_id: &String, secret: &String) -> usize {
-    return OrderAccount::MIN_LEN + order_id.chars().count() + 4 + secret.chars().count() + 4;
+    return OrderAccount::MIN_LEN
+        + order_id.chars().count()
+        + STRING_SIZE
+        + secret.chars().count()
+        + STRING_SIZE;
+}
+
+/// get merchant account size
+pub fn get_merchant_account_size(data: &String) -> usize {
+    return MerchantAccount::MIN_LEN + data.chars().count() + STRING_SIZE;
 }
 
 // Derive the order account pubkey
@@ -84,6 +96,17 @@ mod test {
                 &solana_program::system_program::id(),
                 &sysvar::clock::id()
             )
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_merchant_account_size() {
+        assert_eq!(71, get_merchant_account_size(&String::from("{}")));
+        assert_eq!(
+            160,
+            get_merchant_account_size(&String::from(
+                r#"{"code":200,"success":true,"payload":{"features":["awesome","easyAPI","lowLearningCurve"]}}"#
+            ))
         );
     }
 }
