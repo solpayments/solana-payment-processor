@@ -74,12 +74,9 @@ pub fn process_subscribe(
         return Err(ProgramError::InvalidAccountData);
     }
     // ensure the order id is this subscription name
-    // TODO: what order id to use for paying for the same subscription?
     let name_vec: Vec<&str> = name.split(":").collect();
     let package_name = name_vec[1];
-    if order_account.order_id != package_name {
-        return Err(PaymentProcessorError::InvalidOrder.into());
-    }
+
     // ensure the merchant has a subscription by this name
     let merchant_json_data: Result<Packages, JSONError> = serde_json::from_str(&merchant_account.data);
     let packages = match merchant_json_data {
@@ -105,7 +102,6 @@ pub fn process_subscribe(
         Some(value) => value,
     };
     let account_size = get_subscription_account_size(&name, &data);
-    // TODO: prevent one order account from being used for more than one subscription
     msg!("Creating subscription account on chain...");
     invoke(
         &system_instruction::create_account_with_seed(
