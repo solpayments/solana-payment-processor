@@ -1,4 +1,4 @@
-use crate::engine::json::{Package, Packages};
+use crate::engine::json::{Packages};
 use crate::error::PaymentProcessorError;
 use crate::state::{
     MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount, SubscriptionStatus,
@@ -35,7 +35,6 @@ pub fn process_subscribe(
     let rent_sysvar_info = next_account_info(account_info_iter)?;
 
     // ensure signer can sign
-    // TODO: check tha the person who paid for the order is the one subscribing
     if !signer_info.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -53,6 +52,10 @@ pub fn process_subscribe(
     }
     // get the order account
     let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
+    // ensure we have the right payer
+    if signer_info.key.to_bytes() != order_account.payer {
+        return Err(PaymentProcessorError::WrongPayer.into());
+    }
     // ensure order account is paid
     if order_account.status != (OrderStatus::Paid as u8) {
         return Err(PaymentProcessorError::NotPaid.into());

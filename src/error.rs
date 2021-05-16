@@ -37,6 +37,9 @@ pub enum PaymentProcessorError {
     /// The Provided Merchant Is Wrong
     #[error("Error: The Provided Merchant Is Wrong")]
     WrongMerchant,
+    /// The Payer Is Wrong
+    #[error("Error: The Payer Is Wrong")]
+    WrongPayer,
     /// The Provided Program Owner Is Wrong
     #[error("Error: The Provided Program Owner Is Wrong")]
     WrongProgramOwner,
