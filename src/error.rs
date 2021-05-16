@@ -19,6 +19,9 @@ pub enum PaymentProcessorError {
     /// The Amount Is Already Withdrawn
     #[error("Error: The Amount Is Already Withdrawn")]
     AlreadyWithdrawn,
+    /// The Payment Has Not Yet Been Made
+    #[error("Error: The Payment Has Not Yet Been Made")]
+    NotPaid,
     /// The Provided Merchant Is Wrong
     #[error("Error: The Provided Merchant Is Wrong")]
     WrongMerchant,
