@@ -92,8 +92,7 @@ pub fn process_subscribe(
         Some(value) => value,
     };
     // ensure the amount paid is as expected
-    // TODO: this is wrong it should be duration * number of periods
-    if (package.price * (package.duration as u64)) > order_account.paid_amount {
+    if package.price > order_account.paid_amount {
         return Err(PaymentProcessorError::NotFullyPaid.into());
     }
     // get subscription account size

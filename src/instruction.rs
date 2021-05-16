@@ -957,7 +957,7 @@ mod test {
     #[tokio::test]
     async fn test_subscribe() {
         let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
-        let amount = 1000000 * 720;
+        let amount = 1000000;
         run_subscribe_tests(amount, "cable subscription", "basic", packages).await;
     }
 }
