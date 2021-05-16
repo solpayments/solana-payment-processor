@@ -31,8 +31,8 @@ pub fn get_account_size(min_len: usize, strings: &Vec<&String>) -> usize {
 }
 
 /// get order account size
-pub fn get_order_account_size(order_id: &String, secret: &String) -> usize {
-    get_account_size(OrderAccount::MIN_LEN, &vec![order_id, secret])
+pub fn get_order_account_size(order_id: &String, secret: &String, data: &String) -> usize {
+    get_account_size(OrderAccount::MIN_LEN, &vec![order_id, secret, data])
 }
 
 /// get merchant account size
@@ -78,14 +78,22 @@ mod test {
     #[tokio::test]
     async fn test_get_order_account_size() {
         assert_eq!(
-            183,
-            get_order_account_size(&String::from("123456"), &String::from("password"))
+            197,
+            get_order_account_size(
+                &String::from("123456"),
+                &String::from("password"),
+                &String::from(r#"{"a": "b"}"#)
+            )
         );
         assert_eq!(
-            175,
-            get_order_account_size(&String::from("test-6"), &String::from(""))
+            189,
+            get_order_account_size(
+                &String::from("test-6"),
+                &String::from(""),
+                &String::from(r#"{"a": "b"}"#)
+            )
         );
-        assert_eq!(408, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type")));
+        assert_eq!(422, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type"), &String::from(r#"{"a": "b"}"#)));
     }
 
     #[tokio::test]

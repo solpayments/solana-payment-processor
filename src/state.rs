@@ -56,6 +56,9 @@ pub struct OrderAccount {
     pub paid_amount: u64,
     pub order_id: String,
     pub secret: String,
+    /// this is represented as a string but really is meant to hold JSON
+    /// found this to be a convenient hack to allow flexible data
+    pub data: String,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]

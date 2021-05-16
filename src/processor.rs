@@ -27,9 +27,10 @@ impl PaymentProcessorInstruction {
                 amount,
                 order_id,
                 secret,
+                data,
             } => {
                 msg!("Instruction: ExpressCheckout");
-                process_express_checkout(program_id, accounts, amount, order_id, secret)
+                process_express_checkout(program_id, accounts, amount, order_id, secret, data)
             }
             PaymentProcessorInstruction::Withdraw => {
                 msg!("Instruction: Withdraw");
