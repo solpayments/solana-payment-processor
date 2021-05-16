@@ -193,6 +193,33 @@ pub fn withdraw(
     }
 }
 
+/// creates a 'Subscribe' instruction
+pub fn subscribe(
+    program_id: Pubkey,
+    signer: Pubkey,
+    subscription: Pubkey,
+    merchant: Pubkey,
+    order: Pubkey,
+    name: String,
+    data: Option<String>,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(subscription, false),
+            AccountMeta::new_readonly(merchant, false),
+            AccountMeta::new_readonly(order, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(sysvar::clock::id(), false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+        ],
+        data: PaymentProcessorInstruction::Subscribe { name, data }
+            .try_to_vec()
+            .unwrap(),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use {
@@ -487,60 +514,60 @@ mod test {
         merchant_data
     }
 
-    #[tokio::test]
-    async fn test_register_merchant() {
-        let result =
-            create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
-        let merchant_data = run_merchant_tests(result).await;
-        assert_eq!(String::from("{}"), merchant_data.data);
-    }
+    // #[tokio::test]
+    // async fn test_register_merchant() {
+    //     let result =
+    //         create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
+    //     let merchant_data = run_merchant_tests(result).await;
+    //     assert_eq!(String::from("{}"), merchant_data.data);
+    // }
 
-    #[tokio::test]
-    async fn test_register_merchant_with_seed() {
-        let result = create_merchant_account(
-            Some(String::from("mosh")),
-            Option::None,
-            Option::None,
-            Option::None,
-        )
-        .await;
-        let merchant = result.1;
-        let payer = result.3;
-        let program_id = result.0;
-        assert_eq!(
-            merchant,
-            Pubkey::create_with_seed(&payer.pubkey(), "mosh", &program_id).unwrap()
-        );
-    }
+    // #[tokio::test]
+    // async fn test_register_merchant_with_seed() {
+    //     let result = create_merchant_account(
+    //         Some(String::from("mosh")),
+    //         Option::None,
+    //         Option::None,
+    //         Option::None,
+    //     )
+    //     .await;
+    //     let merchant = result.1;
+    //     let payer = result.3;
+    //     let program_id = result.0;
+    //     assert_eq!(
+    //         merchant,
+    //         Pubkey::create_with_seed(&payer.pubkey(), "mosh", &program_id).unwrap()
+    //     );
+    // }
 
-    #[tokio::test]
-    /// assert that the minimum fee is used when custom fee too low
-    async fn test_register_merchant_fee_default() {
-        let result =
-            create_merchant_account(Option::None, Some(10), Option::None, Option::None).await;
-        let merchant_data = run_merchant_tests(result).await;
-        assert_eq!(MIN_FEE_IN_LAMPORTS, merchant_data.fee);
-    }
+    // #[tokio::test]
+    // /// assert that the minimum fee is used when custom fee too low
+    // async fn test_register_merchant_fee_default() {
+    //     let result =
+    //         create_merchant_account(Option::None, Some(10), Option::None, Option::None).await;
+    //     let merchant_data = run_merchant_tests(result).await;
+    //     assert_eq!(MIN_FEE_IN_LAMPORTS, merchant_data.fee);
+    // }
 
-    #[tokio::test]
-    async fn test_register_merchant_with_all_stuff() {
-        let seed = String::from("mosh");
-        let sponsor_pk = Pubkey::new_unique();
-        let data = String::from(
-            r#"{"code":200,"success":true,"payload":{"features":["awesome","easyAPI","lowLearningCurve"]}}"#,
-        );
-        let datas = data.clone();
-        let result =
-            create_merchant_account(Some(seed), Some(90000), Some(&sponsor_pk), Some(data)).await;
-        let merchant_data = run_merchant_tests(result).await;
-        assert_eq!(datas, merchant_data.data);
-        assert_eq!(90000, merchant_data.fee);
-        assert_eq!(sponsor_pk, Pubkey::new_from_array(merchant_data.sponsor));
-        // just for sanity verify that you can get some of the JSON values
-        let json_value: Value = serde_json::from_str(&merchant_data.data).unwrap();
-        assert_eq!(200, json_value["code"]);
-        assert_eq!(true, json_value["success"]);
-    }
+    // #[tokio::test]
+    // async fn test_register_merchant_with_all_stuff() {
+    //     let seed = String::from("mosh");
+    //     let sponsor_pk = Pubkey::new_unique();
+    //     let data = String::from(
+    //         r#"{"code":200,"success":true,"payload":{"features":["awesome","easyAPI","lowLearningCurve"]}}"#,
+    //     );
+    //     let datas = data.clone();
+    //     let result =
+    //         create_merchant_account(Some(seed), Some(90000), Some(&sponsor_pk), Some(data)).await;
+    //     let merchant_data = run_merchant_tests(result).await;
+    //     assert_eq!(datas, merchant_data.data);
+    //     assert_eq!(90000, merchant_data.fee);
+    //     assert_eq!(sponsor_pk, Pubkey::new_from_array(merchant_data.sponsor));
+    //     // just for sanity verify that you can get some of the JSON values
+    //     let json_value: Value = serde_json::from_str(&merchant_data.data).unwrap();
+    //     assert_eq!(200, json_value["code"]);
+    //     assert_eq!(true, json_value["success"]);
+    // }
 
     async fn run_checkout_tests(
         amount: u64,
@@ -650,145 +677,185 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn test_express_checkout() {
-        let amount: u64 = 2000000000;
-        let order_id = String::from("1337");
-        let secret = String::from("hunter2");
-        let mut merchant_result =
-            create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
-        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
-            create_order(amount, &order_id, &secret, &mut merchant_result).await;
+    // #[tokio::test]
+    // async fn test_express_checkout() {
+    //     let amount: u64 = 2000000000;
+    //     let order_id = String::from("1337");
+    //     let secret = String::from("hunter2");
+    //     let mut merchant_result =
+    //         create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
+    //     let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
+    //         create_order(amount, &order_id, &secret, &mut merchant_result).await;
 
-        run_checkout_tests(
-            amount,
-            order_id,
-            secret,
-            merchant_result,
-            order_acc_pubkey,
-            seller_account_pubkey,
-            mint_keypair,
-        )
-        .await;
-    }
+    //     run_checkout_tests(
+    //         amount,
+    //         order_id,
+    //         secret,
+    //         merchant_result,
+    //         order_acc_pubkey,
+    //         seller_account_pubkey,
+    //         mint_keypair,
+    //     )
+    //     .await;
+    // }
+
+    // #[tokio::test]
+    // /// test checkout with all merchant options
+    // async fn test_express_checkout_with_all_options() {
+    //     let sponsor_pk = Pubkey::new_unique();
+    //     let amount: u64 = 2000000000;
+    //     let order_id = String::from("123-SQT-MX");
+    //     let secret = String::from("supersecret");
+    //     let mut merchant_result = create_merchant_account(
+    //         Some(String::from("Oo")),
+    //         Some(123456),
+    //         Some(&sponsor_pk),
+    //         Some(String::from(r#"{"foo": "bar"}"#)),
+    //     )
+    //     .await;
+    //     let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
+    //         create_order(amount, &order_id, &secret, &mut merchant_result).await;
+    // }
+
+    // #[tokio::test]
+    // async fn test_withdraw() {
+    //     let mut merchant_result =
+    //         create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
+    //     let merchant_token_keypair = Keypair::new();
+    //     let amount: u64 = 1234567890;
+    //     let order_id = String::from("PD17CUSZ75");
+    //     let secret = String::from("i love oov");
+    //     let (order_acc_pubkey, _seller_account_pubkey, mint_keypair) =
+    //         create_order(amount, &order_id, &secret, &mut merchant_result).await;
+    //     let program_id = merchant_result.0;
+    //     let merchant_account_pubkey = merchant_result.1;
+    //     let mut banks_client = merchant_result.2;
+    //     let payer = merchant_result.3;
+    //     let recent_blockhash = merchant_result.4;
+    //     let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
+
+    //     // create and initialize merchant token account
+    //     assert_matches!(
+    //         banks_client
+    //             .process_transaction(create_token_account_transaction(
+    //                 &payer,
+    //                 &mint_keypair,
+    //                 recent_blockhash,
+    //                 &merchant_token_keypair,
+    //                 &payer.pubkey(),
+    //                 0,
+    //             ))
+    //             .await,
+    //         Ok(())
+    //     );
+    //     let (order_payment_token_acc_pubkey, _bump_seed) = Pubkey::find_program_address(
+    //         &[
+    //             &order_acc_pubkey.to_bytes(),
+    //             &spl_token::id().to_bytes(),
+    //             &mint_keypair.pubkey().to_bytes(),
+    //         ],
+    //         &program_id,
+    //     );
+
+    //     // call withdraw ix
+    //     let mut transaction = Transaction::new_with_payer(
+    //         &[withdraw(
+    //             program_id,
+    //             payer.pubkey(),
+    //             order_acc_pubkey,
+    //             merchant_account_pubkey,
+    //             order_payment_token_acc_pubkey,
+    //             merchant_token_keypair.pubkey(),
+    //             pda,
+    //         )],
+    //         Some(&payer.pubkey()),
+    //     );
+    //     transaction.sign(&[&payer], recent_blockhash);
+    //     assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+
+    //     // test contents of order account
+    //     let order_account = banks_client.get_account(order_acc_pubkey).await;
+    //     let order_data = match order_account {
+    //         Ok(data) => match data {
+    //             None => panic!("Oo"),
+    //             Some(value) => match OrderAccount::unpack(&value.data) {
+    //                 Ok(data) => data,
+    //                 Err(error) => panic!("Problem: {:?}", error),
+    //             },
+    //         },
+    //         Err(error) => panic!("Problem: {:?}", error),
+    //     };
+    //     assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
+    //     assert_eq!(amount, order_data.expected_amount);
+    //     assert_eq!(amount, order_data.paid_amount);
+    //     assert_eq!(order_id, order_data.order_id);
+    //     assert_eq!(secret, order_data.secret);
+
+    //     // test contents of merchant token account
+    //     let merchant_token_account = banks_client
+    //         .get_account(merchant_token_keypair.pubkey())
+    //         .await;
+    //     let merchant_account_data = match merchant_token_account {
+    //         Ok(data) => match data {
+    //             None => panic!("Oo"),
+    //             Some(value) => match spl_token::state::Account::unpack(&value.data) {
+    //                 Ok(data) => data,
+    //                 Err(error) => panic!("Problem: {:?}", error),
+    //             },
+    //         },
+    //         Err(error) => panic!("Problem: {:?}", error),
+    //     };
+    //     assert_eq!(order_data.paid_amount, merchant_account_data.amount);
+    // }
 
     #[tokio::test]
-    /// test checkout with all merchant options
-    async fn test_express_checkout_with_all_options() {
-        let sponsor_pk = Pubkey::new_unique();
-        let amount: u64 = 2000000000;
-        let order_id = String::from("123-SQT-MX");
-        let secret = String::from("supersecret");
+    async fn test_subscribe() {
+        let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
+
+        let merchant_seed = "cable subscription";
+        let amount = 1000000 * 720;
+        let order_id = "basic";
+        let secret = "";
+        let name = format!("{}:{}", merchant_seed, order_id);
+
         let mut merchant_result = create_merchant_account(
-            Some(String::from("Oo")),
-            Some(123456),
-            Some(&sponsor_pk),
-            Some(String::from(r#"{"foo": "bar"}"#)),
+            Some(String::from(merchant_seed)),
+            Option::None,
+            Option::None,
+            Some(String::from(packages)),
         )
         .await;
-        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
-            create_order(amount, &order_id, &secret, &mut merchant_result).await;
 
-        run_checkout_tests(
+        let (order_acc_pubkey, _seller_account_pubkey, _mint_keypair) = create_order(
             amount,
-            order_id,
-            secret,
-            merchant_result,
-            order_acc_pubkey,
-            seller_account_pubkey,
-            mint_keypair,
+            &String::from(order_id),
+            &String::from(secret),
+            &mut merchant_result,
         )
         .await;
-    }
 
-    #[tokio::test]
-    async fn test_withdraw() {
-        let mut merchant_result =
-            create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
-        let merchant_token_keypair = Keypair::new();
-        let amount: u64 = 1234567890;
-        let order_id = String::from("PD17CUSZ75");
-        let secret = String::from("i love oov");
-        let (order_acc_pubkey, _seller_account_pubkey, mint_keypair) =
-            create_order(amount, &order_id, &secret, &mut merchant_result).await;
         let program_id = merchant_result.0;
-        let merchant_account_pubkey = merchant_result.1;
         let mut banks_client = merchant_result.2;
+        let merchant_account_pubkey = merchant_result.1;
         let payer = merchant_result.3;
         let recent_blockhash = merchant_result.4;
-        let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
 
-        // create and initialize merchant token account
-        assert_matches!(
-            banks_client
-                .process_transaction(create_token_account_transaction(
-                    &payer,
-                    &mint_keypair,
-                    recent_blockhash,
-                    &merchant_token_keypair,
-                    &payer.pubkey(),
-                    0,
-                ))
-                .await,
-            Ok(())
-        );
-        let (order_payment_token_acc_pubkey, _bump_seed) = Pubkey::find_program_address(
-            &[
-                &order_acc_pubkey.to_bytes(),
-                &spl_token::id().to_bytes(),
-                &mint_keypair.pubkey().to_bytes(),
-            ],
-            &program_id,
-        );
+        let subscription = Pubkey::create_with_seed(&payer.pubkey(), &name, &program_id).unwrap();
 
-        // call withdraw ix
+        // call subscribe ix
         let mut transaction = Transaction::new_with_payer(
-            &[withdraw(
+            &[subscribe(
                 program_id,
                 payer.pubkey(),
-                order_acc_pubkey,
+                subscription,
                 merchant_account_pubkey,
-                order_payment_token_acc_pubkey,
-                merchant_token_keypair.pubkey(),
-                pda,
+                order_acc_pubkey,
+                String::from(name),
+                Option::None,
             )],
             Some(&payer.pubkey()),
         );
         transaction.sign(&[&payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-
-        // test contents of order account
-        let order_account = banks_client.get_account(order_acc_pubkey).await;
-        let order_data = match order_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match OrderAccount::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
-        assert_eq!(amount, order_data.expected_amount);
-        assert_eq!(amount, order_data.paid_amount);
-        assert_eq!(order_id, order_data.order_id);
-        assert_eq!(secret, order_data.secret);
-
-        // test contents of merchant token account
-        let merchant_token_account = banks_client
-            .get_account(merchant_token_keypair.pubkey())
-            .await;
-        let merchant_account_data = match merchant_token_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match spl_token::state::Account::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        assert_eq!(order_data.paid_amount, merchant_account_data.amount);
     }
 }
