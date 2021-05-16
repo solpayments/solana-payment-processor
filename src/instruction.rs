@@ -24,7 +24,7 @@ pub enum PaymentProcessorInstruction {
         /// the amount (in SOL lamports) that will be charged as a fee
         #[allow(dead_code)] // not dead code..
         fee: Option<u64>,
-        /// the seed used when creating the account
+        /// arbitrary merchant data (maybe as a JSON string)
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
     },
@@ -73,6 +73,25 @@ pub enum PaymentProcessorInstruction {
     /// 6. `[]` The token program
     /// 7. `[]` The clock sysvar
     Withdraw,
+    /// Initialize a subscription
+    ///
+    /// Accounts expected:
+    ///
+    /// 0. `[signer]` The account of the person initializing the transaction
+    /// 1. `[writable]` The subscription account.  Owned by this program
+    /// 2. `[]` The merchant account.  Owned by this program
+    /// 3. `[]` The order account.  Owned by this program
+    /// 4. `[]` The System program
+    /// 5. `[]` The clock sysvar
+    /// 6. `[]` The rent sysvar
+    Subscribe {
+        /// the subscription package name
+        #[allow(dead_code)] // not dead code..
+        name: String,
+        /// arbitrary merchant data (maybe as a JSON string)
+        #[allow(dead_code)] // not dead code..
+        data: Option<String>,
+    },
 }
 
 /// Creates an 'RegisterMerchant' instruction.
