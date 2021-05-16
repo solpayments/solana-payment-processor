@@ -1,9 +1,10 @@
+use crate::engine::json::{Package, Packages};
 use crate::error::PaymentProcessorError;
 use crate::state::{
     MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount, SubscriptionStatus,
 };
 use crate::utils::get_subscription_account_size;
-use serde_json::Value;
+use serde_json::Error as JSONError;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -27,13 +28,14 @@ pub fn process_subscribe(
 
     let signer_info = next_account_info(account_info_iter)?;
     let subscription_info = next_account_info(account_info_iter)?;
-    let order_info = next_account_info(account_info_iter)?;
     let merchant_info = next_account_info(account_info_iter)?;
+    let order_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
     let clock_sysvar_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
 
     // ensure signer can sign
+    // TODO: check tha the person who paid for the order is the one subscribing
     if !signer_info.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
@@ -52,7 +54,7 @@ pub fn process_subscribe(
     // get the order account
     let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
     // ensure order account is paid
-    if order_account.status != OrderStatus::Paid as u8 {
+    if order_account.status != (OrderStatus::Paid as u8) {
         return Err(PaymentProcessorError::NotPaid.into());
     }
     // ensure the order account belongs to this merchant
@@ -60,17 +62,30 @@ pub fn process_subscribe(
         return Err(ProgramError::InvalidAccountData);
     }
     // ensure the order id is this subscription name
-    if order_account.order_id != name {
-        return Err(ProgramError::InvalidAccountData);
+    // TODO: what order id to use for paying for the same subscription?
+    let name_vec: Vec<&str> = name.split(":").collect();
+    let package_name = name_vec[1];
+    if order_account.order_id != package_name {
+        return Err(PaymentProcessorError::InvalidOrder.into());
     }
     // ensure the merchant has a subscription by this name
-    let json_data: Value = serde_json::from_str(&merchant_account.data).unwrap();
-    let package = &json_data[&name];
-    let price = &package["price"];
-    let duration = &package["duration"]; // in hours
-    let expected_amount = order_account.expected_amount;
-    if expected_amount >= order_account.paid_amount {
-        return Err(PaymentProcessorError::NotPaid.into());
+    let json_data: Result<Packages, JSONError> = serde_json::from_str(&merchant_account.data);
+    let packages = match json_data {
+        Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
+        Ok(data) => data.packages,
+    };
+    // TODO: what happens when more than one subscription of same name exists?
+    let package = packages
+        .into_iter()
+        .find(|package| package.name == package_name);
+    let package = match package {
+        None => return Err(PaymentProcessorError::InvalidSubscriptionPackage.into()),
+        Some(value) => value,
+    };
+    // ensure the amount paid is as expected
+    // TODO: this is wrong it should be duration * number of periods
+    if (package.price * (package.duration as u64)) > order_account.paid_amount {
+        return Err(PaymentProcessorError::NotFullyPaid.into());
     }
     // get subscription account size
     let data = match maybe_data {
@@ -84,7 +99,7 @@ pub fn process_subscribe(
         &system_instruction::create_account_with_seed(
             signer_info.key,
             subscription_info.key,
-            merchant_info.key,
+            signer_info.key,
             &name,
             Rent::default().minimum_balance(account_size),
             account_size as u64,
@@ -93,7 +108,7 @@ pub fn process_subscribe(
         &[
             signer_info.clone(),
             subscription_info.clone(),
-            merchant_info.clone(),
+            signer_info.clone(),
             system_program_info.clone(),
         ],
     )?;
@@ -112,7 +127,7 @@ pub fn process_subscribe(
         name,
         joined: *timestamp,
         period_start: *timestamp,
-        period_end: *timestamp + (3600 * 24 * 30),
+        period_end: *timestamp + package.duration,
         data,
     };
     subscription.pack(&mut subscription_data);
