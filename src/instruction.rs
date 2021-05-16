@@ -886,11 +886,20 @@ mod test {
         )
         .await;
 
+        // we reference merchant_result directly so that we borrow all its values
+        let subscription = Pubkey::create_with_seed(
+            &merchant_result.3.pubkey(), // payer
+            &name,
+            &merchant_result.0 // program_id
+        ).unwrap();
+
+        let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
+
         let (order_acc_pubkey, _seller_account_pubkey, _mint_keypair) = create_order(
             amount,
             &String::from(package_name),
             &String::from(""),
-            Option::None,
+            Some(order_data),
             &mut merchant_result,
         )
         .await;
@@ -900,8 +909,6 @@ mod test {
         let merchant_account_pubkey = merchant_result.1;
         let payer = merchant_result.3;
         let recent_blockhash = merchant_result.4;
-
-        let subscription = Pubkey::create_with_seed(&payer.pubkey(), &name, &program_id).unwrap();
 
         // call subscribe ix
         let mut transaction = Transaction::new_with_payer(

@@ -15,3 +15,8 @@ pub struct Package {
 pub struct Packages {
     pub packages: Vec<Package>,
 }
+
+#[derive(Serialize, Debug, Deserialize, PartialEq)]
+pub struct OrderSubscription {
+    pub subscription: String,
+}

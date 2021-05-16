@@ -1,4 +1,4 @@
-use crate::engine::json::{Packages};
+use crate::engine::json::{OrderSubscription, Packages};
 use crate::error::PaymentProcessorError;
 use crate::state::{
     MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount, SubscriptionStatus,
@@ -52,6 +52,15 @@ pub fn process_subscribe(
     }
     // get the order account
     let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
+    // ensure this order is for this subscription
+    let order_json_data: Result<OrderSubscription, JSONError> = serde_json::from_str(&order_account.data);
+    let expected_subscription = match order_json_data {
+        Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
+        Ok(data) => data.subscription,
+    };
+    if expected_subscription != subscription_info.key.to_string() {
+        return Err(PaymentProcessorError::WrongOrderAccount.into());
+    }
     // ensure we have the right payer
     if signer_info.key.to_bytes() != order_account.payer {
         return Err(PaymentProcessorError::WrongPayer.into());
@@ -72,8 +81,8 @@ pub fn process_subscribe(
         return Err(PaymentProcessorError::InvalidOrder.into());
     }
     // ensure the merchant has a subscription by this name
-    let json_data: Result<Packages, JSONError> = serde_json::from_str(&merchant_account.data);
-    let packages = match json_data {
+    let merchant_json_data: Result<Packages, JSONError> = serde_json::from_str(&merchant_account.data);
+    let packages = match merchant_json_data {
         Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
         Ok(data) => data.packages,
     };
