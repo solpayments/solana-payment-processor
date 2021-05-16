@@ -228,7 +228,10 @@ mod test {
             MERCHANT, MIN_FEE_IN_LAMPORTS, PDA_SEED, PROGRAM_OWNER, SPONSOR_FEE,
         },
         crate::instruction::PaymentProcessorInstruction,
-        crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
+        crate::state::{
+            MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
+            SubscriptionStatus,
+        },
         crate::utils::{get_amounts, get_order_account_pubkey, get_order_account_size},
         assert_matches::*,
         serde_json::Value,
@@ -808,28 +811,27 @@ mod test {
     //     assert_eq!(order_data.paid_amount, merchant_account_data.amount);
     // }
 
-    #[tokio::test]
-    async fn test_subscribe() {
-        let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
-
-        let merchant_seed = "cable subscription";
-        let amount = 1000000 * 720;
-        let order_id = "basic";
-        let secret = "";
-        let name = format!("{}:{}", merchant_seed, order_id);
+    async fn run_subscribe_tests(
+        amount: u64,
+        subscription_name: &str,
+        package_name: &str,
+        merchant_data: &str,
+    ) {
+        let name = format!("{}:{}", subscription_name, package_name);
+        let cloned_name = name.clone();
 
         let mut merchant_result = create_merchant_account(
-            Some(String::from(merchant_seed)),
+            Some(String::from(subscription_name)),
             Option::None,
             Option::None,
-            Some(String::from(packages)),
+            Some(String::from(merchant_data)),
         )
         .await;
 
         let (order_acc_pubkey, _seller_account_pubkey, _mint_keypair) = create_order(
             amount,
-            &String::from(order_id),
-            &String::from(secret),
+            &String::from(package_name),
+            &String::from(""),
             &mut merchant_result,
         )
         .await;
@@ -857,5 +859,39 @@ mod test {
         );
         transaction.sign(&[&payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+
+        // test contents of subscription token account
+        let subscription_account = banks_client.get_account(subscription).await;
+        let subscription_data = match subscription_account {
+            Ok(data) => match data {
+                None => panic!("Oo"),
+                Some(value) => match SubscriptionAccount::unpack(&value.data) {
+                    Ok(data) => data,
+                    Err(error) => panic!("Problem: {:?}", error),
+                },
+            },
+            Err(error) => panic!("Problem: {:?}", error),
+        };
+        assert_eq!(
+            (SubscriptionStatus::Initialized as u8),
+            subscription_data.status
+        );
+        assert_eq!(String::from(cloned_name), subscription_data.name);
+        assert_eq!(
+            payer.pubkey(),
+            Pubkey::new_from_array(subscription_data.owner)
+        );
+        assert_eq!(
+            merchant_account_pubkey,
+            Pubkey::new_from_array(subscription_data.merchant)
+        );
+        assert_eq!(String::from("{}"), subscription_data.data);
+    }
+
+    #[tokio::test]
+    async fn test_subscribe() {
+        let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
+        let amount = 1000000 * 720;
+        run_subscribe_tests(amount, "cable subscription", "basic", packages).await;
     }
 }
