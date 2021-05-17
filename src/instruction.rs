@@ -250,6 +250,7 @@ mod test {
         solana_sdk::{
             signature::{Keypair, Signer},
             transaction::Transaction,
+            transport::TransportError,
         },
         spl_token::{
             instruction::{initialize_account, initialize_mint, mint_to},
@@ -874,7 +875,7 @@ mod test {
         subscription_name: &str,
         package_name: &str,
         merchant_data: &str,
-    ) {
+    ) -> Result<(), TransportError> {
         let name = format!("{}:{}", subscription_name, package_name);
         let cloned_name = name.clone();
 
@@ -890,8 +891,9 @@ mod test {
         let subscription = Pubkey::create_with_seed(
             &merchant_result.3.pubkey(), // payer
             &name,
-            &merchant_result.0 // program_id
-        ).unwrap();
+            &merchant_result.0, // program_id
+        )
+        .unwrap();
 
         let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
 
@@ -924,40 +926,85 @@ mod test {
             Some(&payer.pubkey()),
         );
         transaction.sign(&[&payer], recent_blockhash);
-        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+        // assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
 
-        // test contents of subscription token account
-        let subscription_account = banks_client.get_account(subscription).await;
-        let subscription_data = match subscription_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match SubscriptionAccount::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
+        let result = banks_client.process_transaction(transaction).await;
+
+        if result.is_ok() {
+            // test contents of subscription token account
+            let subscription_account = banks_client.get_account(subscription).await;
+            let subscription_data = match subscription_account {
+                Ok(data) => match data {
+                    None => panic!("Oo"),
+                    Some(value) => match SubscriptionAccount::unpack(&value.data) {
+                        Ok(data) => data,
+                        Err(error) => panic!("Problem: {:?}", error),
+                    },
                 },
-            },
-            Err(error) => panic!("Problem: {:?}", error),
-        };
-        assert_eq!(
-            (SubscriptionStatus::Initialized as u8),
-            subscription_data.status
-        );
-        assert_eq!(String::from(cloned_name), subscription_data.name);
-        assert_eq!(
-            payer.pubkey(),
-            Pubkey::new_from_array(subscription_data.owner)
-        );
-        assert_eq!(
-            merchant_account_pubkey,
-            Pubkey::new_from_array(subscription_data.merchant)
-        );
-        assert_eq!(String::from("{}"), subscription_data.data);
+                Err(error) => panic!("Problem: {:?}", error),
+            };
+            assert_eq!(
+                (SubscriptionStatus::Initialized as u8),
+                subscription_data.status
+            );
+            assert_eq!(String::from(cloned_name), subscription_data.name);
+            assert_eq!(
+                payer.pubkey(),
+                Pubkey::new_from_array(subscription_data.owner)
+            );
+            assert_eq!(
+                merchant_account_pubkey,
+                Pubkey::new_from_array(subscription_data.merchant)
+            );
+            assert_eq!(String::from("{}"), subscription_data.data);
+        }
+
+        result
     }
 
     #[tokio::test]
     async fn test_subscribe() {
         let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
-        let amount = 1000000;
-        run_subscribe_tests(amount, "cable subscription", "basic", packages).await;
+        assert!((run_subscribe_tests(1000000, "cable subscription", "basic", packages).await).is_ok());
+    }
+
+    #[tokio::test]
+    /// test what happens when there are 0 packages
+    async fn test_subscribe_no_packages() {
+        let packages = r#"{"packages":[]}"#;
+        assert!((run_subscribe_tests(1337, "cable subscription", "basic", packages).await).is_err());
+    }
+
+    #[tokio::test]
+    /// test what happens when there are duplicate packages
+    async fn test_subscribe_duplicate_packages() {
+        let packages = r#"{"packages":[{"name":"a","price":100,"duration":720},{"name":"a","price":222,"duration":262800}]}"#;
+        assert!((run_subscribe_tests(100, "cable subscription", "a", packages).await).is_ok());
+    }
+
+    #[tokio::test]
+    /// test what happens when the package is not found
+    async fn test_subscribe_package_not_found() {
+        let packages = r#"{"packages":[{"name":"a","price":100,"duration":720}]}"#;
+        assert!((run_subscribe_tests(100, "cable subscription", "zz", packages).await).is_err());
+    }
+
+    #[tokio::test]
+    /// test what happens when there is no packages object in the JSON
+    async fn test_subscribe_no_packages_json() {
+        assert!((run_subscribe_tests(250, "sub", "package", r#"{}"#).await).is_err());
+    }
+
+    #[tokio::test]
+    /// test what happens when there is no valid JSON
+    async fn test_subscribe_no_json() {
+        assert!((run_subscribe_tests(250, "sub", "package", "what is?").await).is_err());
+    }
+
+    #[tokio::test]
+    /// test what happens when the amount paid is insufficient
+    async fn test_subscribe_not_enough_paid() {
+        let packages = r#"{"packages":[{"name":"basic","price":100,"duration":720}]}"#;
+        assert!((run_subscribe_tests(10, "Netflix", "basic", packages).await).is_err());
     }
 }
