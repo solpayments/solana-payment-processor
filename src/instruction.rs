@@ -24,7 +24,7 @@ pub enum PaymentProcessorInstruction {
         /// the amount (in SOL lamports) that will be charged as a fee
         #[allow(dead_code)] // not dead code..
         fee: Option<u64>,
-        /// the seed used when creating the account
+        /// arbitrary merchant data (maybe as a JSON string)
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
     },
@@ -59,6 +59,9 @@ pub enum PaymentProcessorInstruction {
         // that the merchant can use to assert if a transaction is authenci
         #[allow(dead_code)] // not dead code..
         secret: String,
+        /// arbitrary merchant data (maybe as a JSON string)
+        #[allow(dead_code)] // not dead code..
+        data: Option<String>,
     },
     /// Withdraw funds for a particular order
     ///
@@ -73,6 +76,25 @@ pub enum PaymentProcessorInstruction {
     /// 6. `[]` The token program
     /// 7. `[]` The clock sysvar
     Withdraw,
+    /// Initialize a subscription
+    ///
+    /// Accounts expected:
+    ///
+    /// 0. `[signer]` The account of the person initializing the transaction
+    /// 1. `[writable]` The subscription account.  Owned by this program
+    /// 2. `[]` The merchant account.  Owned by this program
+    /// 3. `[]` The order account.  Owned by this program
+    /// 4. `[]` The System program
+    /// 5. `[]` The clock sysvar
+    /// 6. `[]` The rent sysvar
+    Subscribe {
+        /// the subscription package name
+        #[allow(dead_code)] // not dead code..
+        name: String,
+        /// arbitrary merchant data (maybe as a JSON string)
+        #[allow(dead_code)] // not dead code..
+        data: Option<String>,
+    },
 }
 
 /// Creates an 'RegisterMerchant' instruction.
@@ -120,6 +142,7 @@ pub fn express_checkout(
     amount: u64,
     order_id: String,
     secret: String,
+    data: Option<String>,
 ) -> Instruction {
     Instruction {
         program_id,
@@ -142,6 +165,7 @@ pub fn express_checkout(
             amount,
             order_id,
             secret,
+            data,
         }
         .try_to_vec()
         .unwrap(),
@@ -174,6 +198,33 @@ pub fn withdraw(
     }
 }
 
+/// creates a 'Subscribe' instruction
+pub fn subscribe(
+    program_id: Pubkey,
+    signer: Pubkey,
+    subscription: Pubkey,
+    merchant: Pubkey,
+    order: Pubkey,
+    name: String,
+    data: Option<String>,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(subscription, false),
+            AccountMeta::new_readonly(merchant, false),
+            AccountMeta::new_readonly(order, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(sysvar::clock::id(), false),
+            AccountMeta::new_readonly(sysvar::rent::id(), false),
+        ],
+        data: PaymentProcessorInstruction::Subscribe { name, data }
+            .try_to_vec()
+            .unwrap(),
+    }
+}
+
 #[cfg(test)]
 mod test {
     use {
@@ -182,7 +233,10 @@ mod test {
             MERCHANT, MIN_FEE_IN_LAMPORTS, PDA_SEED, PROGRAM_OWNER, SPONSOR_FEE,
         },
         crate::instruction::PaymentProcessorInstruction,
-        crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
+        crate::state::{
+            MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
+            SubscriptionStatus,
+        },
         crate::utils::{get_amounts, get_order_account_pubkey, get_order_account_size},
         assert_matches::*,
         serde_json::Value,
@@ -196,6 +250,7 @@ mod test {
         solana_sdk::{
             signature::{Keypair, Signer},
             transaction::Transaction,
+            transport::TransportError,
         },
         spl_token::{
             instruction::{initialize_account, initialize_mint, mint_to},
@@ -325,6 +380,7 @@ mod test {
         order_id: &String,
         amount: u64,
         secret: &String,
+        data: Option<String>,
         program_id: &Pubkey,
         merchant: &Pubkey,
         buyer_token: &Pubkey,
@@ -373,6 +429,7 @@ mod test {
                 amount,
                 (&order_id).to_string(),
                 (&secret).to_string(),
+                data,
             )],
             Some(&payer.pubkey()),
         );
@@ -386,6 +443,7 @@ mod test {
         amount: u64,
         order_id: &String,
         secret: &String,
+        data: Option<String>,
         merchant_result: &mut MerchantResult,
     ) -> (Pubkey, Pubkey, Keypair) {
         let program_id = merchant_result.0;
@@ -429,6 +487,7 @@ mod test {
             &order_id,
             amount,
             &secret,
+            data,
             &program_id,
             &merchant_account_pubkey,
             &buyer_token_keypair.pubkey(),
@@ -527,6 +586,7 @@ mod test {
         amount: u64,
         order_id: String,
         secret: String,
+        data: Option<String>,
         merchant_result: MerchantResult,
         order_acc_pubkey: Pubkey,
         seller_account_pubkey: Pubkey,
@@ -547,9 +607,17 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(order_account.owner, program_id);
+        let data_string = match data {
+            None => String::from("{}"),
+            Some(value) => value,
+        };
         assert_eq!(
             order_account.lamports,
-            Rent::default().minimum_balance(get_order_account_size(&order_id, &secret))
+            Rent::default().minimum_balance(get_order_account_size(
+                &order_id,
+                &secret,
+                &data_string
+            ))
         );
         let order_data = OrderAccount::unpack(&order_account.data);
         let order_data = match order_data {
@@ -567,6 +635,16 @@ mod test {
         assert_eq!(amount, order_data.paid_amount);
         assert_eq!(order_id, order_data.order_id);
         assert_eq!(secret, order_data.secret);
+        assert_eq!(data_string, order_data.data);
+
+        assert_eq!(
+            order_account.lamports,
+            Rent::default().minimum_balance(get_order_account_size(
+                &order_id,
+                &secret,
+                &data_string
+            ))
+        );
 
         // test contents of seller token account
         let seller_token_account = banks_client.get_account(seller_account_pubkey).await;
@@ -638,13 +716,20 @@ mod test {
         let secret = String::from("hunter2");
         let mut merchant_result =
             create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
-        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
-            create_order(amount, &order_id, &secret, &mut merchant_result).await;
+        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) = create_order(
+            amount,
+            &order_id,
+            &secret,
+            Option::None,
+            &mut merchant_result,
+        )
+        .await;
 
         run_checkout_tests(
             amount,
             order_id,
             secret,
+            Option::None,
             merchant_result,
             order_acc_pubkey,
             seller_account_pubkey,
@@ -667,13 +752,19 @@ mod test {
             Some(String::from(r#"{"foo": "bar"}"#)),
         )
         .await;
-        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) =
-            create_order(amount, &order_id, &secret, &mut merchant_result).await;
-
+        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) = create_order(
+            amount,
+            &order_id,
+            &secret,
+            Some(String::from(r#"{"a": "b"}"#)),
+            &mut merchant_result,
+        )
+        .await;
         run_checkout_tests(
             amount,
             order_id,
             secret,
+            Some(String::from(r#"{"a": "b"}"#)),
             merchant_result,
             order_acc_pubkey,
             seller_account_pubkey,
@@ -690,8 +781,14 @@ mod test {
         let amount: u64 = 1234567890;
         let order_id = String::from("PD17CUSZ75");
         let secret = String::from("i love oov");
-        let (order_acc_pubkey, _seller_account_pubkey, mint_keypair) =
-            create_order(amount, &order_id, &secret, &mut merchant_result).await;
+        let (order_acc_pubkey, _seller_account_pubkey, mint_keypair) = create_order(
+            amount,
+            &order_id,
+            &secret,
+            Option::None,
+            &mut merchant_result,
+        )
+        .await;
         let program_id = merchant_result.0;
         let merchant_account_pubkey = merchant_result.1;
         let mut banks_client = merchant_result.2;
@@ -771,5 +868,143 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(order_data.paid_amount, merchant_account_data.amount);
+    }
+
+    async fn run_subscribe_tests(
+        amount: u64,
+        subscription_name: &str,
+        package_name: &str,
+        merchant_data: &str,
+    ) -> Result<(), TransportError> {
+        let name = format!("{}:{}", subscription_name, package_name);
+        let cloned_name = name.clone();
+
+        let mut merchant_result = create_merchant_account(
+            Some(String::from(subscription_name)),
+            Option::None,
+            Option::None,
+            Some(String::from(merchant_data)),
+        )
+        .await;
+
+        // we reference merchant_result directly so that we borrow all its values
+        let subscription = Pubkey::create_with_seed(
+            &merchant_result.3.pubkey(), // payer
+            &name,
+            &merchant_result.0, // program_id
+        )
+        .unwrap();
+
+        let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
+
+        let (order_acc_pubkey, _seller_account_pubkey, _mint_keypair) = create_order(
+            amount,
+            &String::from(package_name),
+            &String::from(""),
+            Some(order_data),
+            &mut merchant_result,
+        )
+        .await;
+
+        let program_id = merchant_result.0;
+        let mut banks_client = merchant_result.2;
+        let merchant_account_pubkey = merchant_result.1;
+        let payer = merchant_result.3;
+        let recent_blockhash = merchant_result.4;
+
+        // call subscribe ix
+        let mut transaction = Transaction::new_with_payer(
+            &[subscribe(
+                program_id,
+                payer.pubkey(),
+                subscription,
+                merchant_account_pubkey,
+                order_acc_pubkey,
+                String::from(name),
+                Option::None,
+            )],
+            Some(&payer.pubkey()),
+        );
+        transaction.sign(&[&payer], recent_blockhash);
+        // assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+
+        let result = banks_client.process_transaction(transaction).await;
+
+        if result.is_ok() {
+            // test contents of subscription token account
+            let subscription_account = banks_client.get_account(subscription).await;
+            let subscription_data = match subscription_account {
+                Ok(data) => match data {
+                    None => panic!("Oo"),
+                    Some(value) => match SubscriptionAccount::unpack(&value.data) {
+                        Ok(data) => data,
+                        Err(error) => panic!("Problem: {:?}", error),
+                    },
+                },
+                Err(error) => panic!("Problem: {:?}", error),
+            };
+            assert_eq!(
+                (SubscriptionStatus::Initialized as u8),
+                subscription_data.status
+            );
+            assert_eq!(String::from(cloned_name), subscription_data.name);
+            assert_eq!(
+                payer.pubkey(),
+                Pubkey::new_from_array(subscription_data.owner)
+            );
+            assert_eq!(
+                merchant_account_pubkey,
+                Pubkey::new_from_array(subscription_data.merchant)
+            );
+            assert_eq!(String::from("{}"), subscription_data.data);
+        }
+
+        result
+    }
+
+    #[tokio::test]
+    async fn test_subscribe() {
+        let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
+        assert!((run_subscribe_tests(1000000, "cable subscription", "basic", packages).await).is_ok());
+    }
+
+    #[tokio::test]
+    /// test what happens when there are 0 packages
+    async fn test_subscribe_no_packages() {
+        let packages = r#"{"packages":[]}"#;
+        assert!((run_subscribe_tests(1337, "cable subscription", "basic", packages).await).is_err());
+    }
+
+    #[tokio::test]
+    /// test what happens when there are duplicate packages
+    async fn test_subscribe_duplicate_packages() {
+        let packages = r#"{"packages":[{"name":"a","price":100,"duration":720},{"name":"a","price":222,"duration":262800}]}"#;
+        assert!((run_subscribe_tests(100, "cable subscription", "a", packages).await).is_ok());
+    }
+
+    #[tokio::test]
+    /// test what happens when the package is not found
+    async fn test_subscribe_package_not_found() {
+        let packages = r#"{"packages":[{"name":"a","price":100,"duration":720}]}"#;
+        assert!((run_subscribe_tests(100, "cable subscription", "zz", packages).await).is_err());
+    }
+
+    #[tokio::test]
+    /// test what happens when there is no packages object in the JSON
+    async fn test_subscribe_no_packages_json() {
+        assert!((run_subscribe_tests(250, "sub", "package", r#"{}"#).await).is_err());
+    }
+
+    #[tokio::test]
+    /// test what happens when there is no valid JSON
+    async fn test_subscribe_no_json() {
+        assert!((run_subscribe_tests(250, "sub", "package", "what is?").await).is_err());
+    }
+
+    #[tokio::test]
+    /// test what happens when the amount paid is insufficient
+    async fn test_subscribe_not_enough_paid() {
+        let packages = r#"{"packages":[{"name":"basic","price":100,"duration":720}]}"#;
+        assert!((run_subscribe_tests(10, "Netflix", "basic", packages).await).is_err());
     }
 }

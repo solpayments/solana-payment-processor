@@ -26,6 +26,7 @@ pub fn process_express_checkout(
     amount: u64,
     order_id: String,
     secret: String,
+    maybe_data: Option<String>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -77,7 +78,11 @@ pub fn process_express_checkout(
         return Err(PaymentProcessorError::WrongSponsor.into());
     }
     // create order account
-    let order_account_size = get_order_account_size(&order_id, &secret);
+    let data = match maybe_data {
+        None => String::from("{}"),
+        Some(value) => value,
+    };
+    let order_account_size = get_order_account_size(&order_id, &secret, &data);
     // the order account amount includes the fee in SOL
     let order_account_amount = Rent::default().minimum_balance(order_account_size);
     msg!("Creating order account on chain...");
@@ -251,6 +256,7 @@ pub fn process_express_checkout(
         paid_amount: amount,
         order_id,
         secret,
+        data,
     };
 
     order.pack(&mut order_account_data);

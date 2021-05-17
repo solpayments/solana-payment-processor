@@ -56,6 +56,29 @@ pub struct OrderAccount {
     pub paid_amount: u64,
     pub order_id: String,
     pub secret: String,
+    /// this is represented as a string but really is meant to hold JSON
+    /// found this to be a convenient hack to allow flexible data
+    pub data: String,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+pub enum SubscriptionStatus {
+    Uninitialized = 0,
+    Initialized = 1,
+}
+
+#[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
+pub struct SubscriptionAccount {
+    pub status: u8,
+    pub owner: PublicKey,
+    pub merchant: PublicKey,
+    pub name: String,
+    pub joined: UnixTimestamp,
+    pub period_start: UnixTimestamp,
+    pub period_end: UnixTimestamp,
+    /// this is represented as a string but really is meant to hold JSON
+    /// found this to be a convenient hack to allow flexible data
+    pub data: String,
 }
 
 // impl for MerchantAccount
@@ -95,4 +118,24 @@ impl OrderAccount {
         + size_of::<PublicKey>()
         + size_of::<u64>()
         + size_of::<u64>();
+}
+
+// impl for SubscriptionAccount
+impl Sealed for SubscriptionAccount {}
+
+impl Serdes for SubscriptionAccount {}
+
+impl IsInitialized for SubscriptionAccount {
+    fn is_initialized(&self) -> bool {
+        self.status != MerchantStatus::Uninitialized as u8
+    }
+}
+
+impl SubscriptionAccount {
+    pub const MIN_LEN: usize = size_of::<u8>()
+        + size_of::<PublicKey>()
+        + size_of::<PublicKey>()
+        + size_of::<UnixTimestamp>()
+        + size_of::<UnixTimestamp>()
+        + size_of::<UnixTimestamp>();
 }

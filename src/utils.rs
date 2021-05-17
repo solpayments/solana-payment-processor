@@ -1,5 +1,5 @@
 use crate::engine::constants::{MAX_SEED_LEN, STRING_SIZE};
-use crate::state::{MerchantAccount, OrderAccount};
+use crate::state::{MerchantAccount, OrderAccount, SubscriptionAccount};
 use solana_program::pubkey::Pubkey;
 
 /// Given the expected amount, calculate the fee and take home amount
@@ -21,18 +21,28 @@ pub fn get_amounts(amount: u64, fee_percentage: u128) -> (u64, u64) {
     (take_home_amount, fee_amount)
 }
 
+pub fn get_account_size(min_len: usize, strings: &Vec<&String>) -> usize {
+    let mut size = min_len;
+    for item in strings {
+        size = size + item.chars().count() + STRING_SIZE;
+    }
+
+    size
+}
+
 /// get order account size
-pub fn get_order_account_size(order_id: &String, secret: &String) -> usize {
-    return OrderAccount::MIN_LEN
-        + order_id.chars().count()
-        + STRING_SIZE
-        + secret.chars().count()
-        + STRING_SIZE;
+pub fn get_order_account_size(order_id: &String, secret: &String, data: &String) -> usize {
+    get_account_size(OrderAccount::MIN_LEN, &vec![order_id, secret, data])
 }
 
 /// get merchant account size
 pub fn get_merchant_account_size(data: &String) -> usize {
-    return MerchantAccount::MIN_LEN + data.chars().count() + STRING_SIZE;
+    get_account_size(MerchantAccount::MIN_LEN, &vec![data])
+}
+
+/// get subscription account size
+pub fn get_subscription_account_size(name: &String, data: &String) -> usize {
+    get_account_size(SubscriptionAccount::MIN_LEN, &vec![name, data])
 }
 
 // Derive the order account pubkey
@@ -68,14 +78,22 @@ mod test {
     #[tokio::test]
     async fn test_get_order_account_size() {
         assert_eq!(
-            183,
-            get_order_account_size(&String::from("123456"), &String::from("password"))
+            197,
+            get_order_account_size(
+                &String::from("123456"),
+                &String::from("password"),
+                &String::from(r#"{"a": "b"}"#)
+            )
         );
         assert_eq!(
-            175,
-            get_order_account_size(&String::from("test-6"), &String::from(""))
+            189,
+            get_order_account_size(
+                &String::from("test-6"),
+                &String::from(""),
+                &String::from(r#"{"a": "b"}"#)
+            )
         );
-        assert_eq!(408, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type")));
+        assert_eq!(422, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type"), &String::from(r#"{"a": "b"}"#)));
     }
 
     #[tokio::test]
@@ -98,6 +116,21 @@ mod test {
             get_merchant_account_size(&String::from(
                 r#"{"code":200,"success":true,"payload":{"features":["awesome","easyAPI","lowLearningCurve"]}}"#
             ))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_subscription_account_size() {
+        assert_eq!(
+            99,
+            get_subscription_account_size(&String::from("a"), &String::from("b"))
+        );
+        assert_eq!(
+            131,
+            get_subscription_account_size(
+                &String::from("Annual"),
+                &String::from(r#"{"foo": "bar", "price": 200}"#)
+            )
         );
     }
 }
