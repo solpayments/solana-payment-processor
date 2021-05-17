@@ -17,6 +17,14 @@ SolPayments is a smart contract program build for the [Solana blockchain](https:
     - the payment amount is transferred to a token account that is controlled by the program (to the extent that no one other than the merchant can access this amount)
 3. Finally, the merchant (or anyone at all) can issue in instruction to withdraw the amount.  This results in the payment being transferred to the merchant, and the payment processing fees being sent to the program owner and/or the sponsor.
 
+### Subscriptions
+
+The above basic functionality can be though of as a basic primitive that allows for the support of all kinds of e-commerce payments.  This is actually how suscriptions work.
+
+- Register a special merchant account that specifies the available subscription packages and their costs
+- Make a payment using `ExpressCheckout` that specifies the merchant account
+- Call the `Subscribe` instruction and specify the merchant and order accounts.  The program will create a subscription account that specifies the subscription package and the date of expiry.
+
 ## Program API
 
 The SolPayments program has three general parts:
@@ -80,6 +88,8 @@ ExpressCheckout {
     // An extra field that can store an encrypted (ot not encrypted) string
     // that the merchant can use to assert if a transaction is authenci
     secret: String,
+    /// arbitrary merchant data (maybe as a JSON string)
+    data: Option<String>,
 }
 ```
 
@@ -89,9 +99,35 @@ ExpressCheckout {
 - order_id: an order ID that the merchant can use to track what this payment is for
 - secret: a secret value (can be encrypted) that the merchant's ecommerce software can use to verify that this payment and order are valid
 
-### 3. Withdraw Funds
+### 3. Start Subscription
 
-Finally, whenever ready anyone can execute a `Withdraw` instruction which will result in the merchant receiving th payment in their own account.
+In which a user pays a subscription and gets back a subscription account that shows which package they are subscribed to and when it expires.
+
+```rust
+/// Initialize a subscription
+///
+/// Accounts expected:
+///
+/// 0. `[signer]` The account of the person initializing the transaction
+/// 1. `[writable]` The subscription account.  Owned by this program
+/// 2. `[]` The merchant account.  Owned by this program
+/// 3. `[]` The order account.  Owned by this program
+/// 4. `[]` The System program
+/// 5. `[]` The clock sysvar
+/// 6. `[]` The rent sysvar
+Subscribe {
+    /// the subscription package name
+    name: String,
+    /// arbitrary merchant data (maybe as a JSON string)
+    data: Option<String>,
+}
+```
+
+This instruction is meant to be ran just after creating and paying for an order using the `ExpressCheckout` instruction.
+
+### 4. Withdraw Funds
+
+Whenever ready anyone can execute a `Withdraw` instruction which will result in the merchant receiving th payment in their own account.
 
 ```rust
 /// Withdraw funds for a particular order
