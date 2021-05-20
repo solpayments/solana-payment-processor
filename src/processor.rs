@@ -20,7 +20,7 @@ impl PaymentProcessorInstruction {
             .map_err(|_| ProgramError::InvalidInstructionData)?;
         match instruction {
             PaymentProcessorInstruction::RegisterMerchant { seed, fee, data } => {
-                msg!("Instruction: RegisterMerchant");
+                msg!("SolPayments Instruction: RegisterMerchant");
                 process_register_merchant(program_id, accounts, seed, fee, data)
             }
             PaymentProcessorInstruction::ExpressCheckout {
@@ -29,15 +29,15 @@ impl PaymentProcessorInstruction {
                 secret,
                 data,
             } => {
-                msg!("Instruction: ExpressCheckout");
+                msg!("SolPayments Instruction: ExpressCheckout");
                 process_express_checkout(program_id, accounts, amount, order_id, secret, data)
             }
             PaymentProcessorInstruction::Withdraw => {
-                msg!("Instruction: Withdraw");
+                msg!("SolPayments Instruction: Withdraw");
                 process_withdraw_payment(program_id, accounts)
             }
             PaymentProcessorInstruction::Subscribe { name, data } => {
-                msg!("Instruction: Subscribe");
+                msg!("SolPayments Instruction: Subscribe");
                 process_subscribe(program_id, accounts, name, data)
             }
         }
