@@ -85,7 +85,6 @@ pub fn process_express_checkout(
     let order_account_size = get_order_account_size(&order_id, &secret, &data);
     // the order account amount includes the fee in SOL
     let order_account_amount = Rent::default().minimum_balance(order_account_size);
-    msg!("Creating order account on chain...");
     invoke(
         &system_instruction::create_account_with_seed(
             signer_info.key,
@@ -134,10 +133,7 @@ pub fn process_express_checkout(
         .max(1)
         .saturating_sub(seller_token_info.lamports());
     if required_lamports > 0 {
-        msg!(
-            "Transfer {} lamports to the associated seller token account",
-            required_lamports
-        );
+        // Transfer lamports to the associated seller token account
         invoke(
             &system_instruction::transfer(
                 &signer_info.key,
@@ -151,19 +147,19 @@ pub fn process_express_checkout(
             ],
         )?;
     }
-    msg!("Allocate space for the associated seller token account");
+    // Allocate space for the associated seller token account
     invoke_signed(
         &system_instruction::allocate(seller_token_info.key, spl_token::state::Account::LEN as u64),
         &[seller_token_info.clone(), system_program_info.clone()],
         &[&associated_token_account_signer_seeds],
     )?;
-    msg!("Assign the associated seller token account to the SPL Token program");
+    // Assign the associated seller token account to the SPL Token program
     invoke_signed(
         &system_instruction::assign(seller_token_info.key, &spl_token::id()),
         &[seller_token_info.clone(), system_program_info.clone()],
         &[&associated_token_account_signer_seeds],
     )?;
-    msg!("Initialize the associated seller token account");
+    // Initialize the associated seller token account
     invoke(
         &spl_token::instruction::initialize_account(
             &spl_token::id(),
@@ -180,7 +176,7 @@ pub fn process_express_checkout(
         ],
     )?;
 
-    msg!("Transfer payment amount to associated seller token account...");
+    // Transfer payment amount to associated seller token account...
     invoke(
         &spl_token::instruction::transfer(
             token_program_info.key,
@@ -201,7 +197,7 @@ pub fn process_express_checkout(
 
     if Pubkey::new_from_array(merchant_account.sponsor) == Pubkey::from_str(PROGRAM_OWNER).unwrap()
     {
-        msg!("Transferring processing fee to the program owner...");
+        // Transferring processing fee to the program owner...
         invoke(
             &system_instruction::transfer(
                 &signer_info.key,
@@ -217,7 +213,7 @@ pub fn process_express_checkout(
     } else {
         // we need to pay both the program owner and the sponsor
         let (program_owner_fee, sponsor_fee) = get_amounts(merchant_account.fee, SPONSOR_FEE);
-        msg!("Transferring processing fee to the program owner and sponsor...");
+        // Transferring processing fee to the program owner and sponsor...
         invoke(
             &system_instruction::transfer(
                 &signer_info.key,
@@ -243,7 +239,7 @@ pub fn process_express_checkout(
     // get the order account
     // TODO: ensure this account is not already initialized
     let mut order_account_data = order_info.try_borrow_mut_data()?;
-    msg!("Saving order information...");
+    // Saving order information...
     let order = OrderAccount {
         status: OrderStatus::Paid as u8,
         created: *timestamp,

@@ -9,7 +9,6 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
     entrypoint::ProgramResult,
-    msg,
     program::invoke,
     program_error::ProgramError,
     program_pack::IsInitialized,
@@ -101,7 +100,7 @@ pub fn process_subscribe(
         Some(value) => value,
     };
     let account_size = get_subscription_account_size(&name, &data);
-    msg!("Creating subscription account on chain...");
+    // Creating subscription account on chain...
     invoke(
         &system_instruction::create_account_with_seed(
             signer_info.key,
@@ -126,7 +125,7 @@ pub fn process_subscribe(
     // get the subscription account
     // TODO: ensure this account is not already initialized
     let mut subscription_data = subscription_info.try_borrow_mut_data()?;
-    msg!("Saving subscription information...");
+    // Saving subscription information...
     let subscription = SubscriptionAccount {
         status: SubscriptionStatus::Initialized as u8,
         owner: signer_info.key.to_bytes(),

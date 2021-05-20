@@ -6,7 +6,6 @@ use crate::{
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -42,8 +41,7 @@ pub fn process_register_merchant(
     };
     let account_size = get_merchant_account_size(&data);
 
-    // create merchant account
-    msg!("Creating merchant account on chain...");
+    // Creating merchant account on chain...
     invoke(
         &system_instruction::create_account_with_seed(
             signer_info.key,

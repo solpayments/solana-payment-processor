@@ -8,7 +8,6 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
     entrypoint::ProgramResult,
-    msg,
     program::{invoke_signed},
     program_error::ProgramError,
     program_pack::IsInitialized,
@@ -79,8 +78,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     if order_account.status != OrderStatus::Paid as u8 {
         return Err(PaymentProcessorError::AlreadyWithdrawn.into());
     }
-    // transfer amount to merchant
-    msg!("Transferring payment to the merchant...");
+    // Transferring payment to the merchant...
     invoke_signed(
         &spl_token::instruction::transfer(
             token_program_info.key,
@@ -100,8 +98,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
 
-    // update the order account data
-    msg!("Updating order account information...");
+    // Updating order account information...
     order_account.status = OrderStatus::Withdrawn as u8;
     order_account.modified = *timestamp;
     OrderAccount::pack(&order_account, &mut order_info.data.borrow_mut());
