@@ -234,7 +234,7 @@ mod test {
         },
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{
-            AccountType, MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
+            MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
             SubscriptionStatus,
         },
         crate::utils::{get_amounts, get_order_account_pubkey, get_order_account_size},
@@ -521,7 +521,6 @@ mod test {
             Ok(data) => data,
             Err(error) => panic!("Problem: {:?}", error),
         };
-        assert_eq!(AccountType::Merchant as u8, merchant_data.kind);
         assert_eq!(true, merchant_data.is_initialized());
         assert_eq!(payer.pubkey(), Pubkey::new_from_array(merchant_data.owner));
 
@@ -625,7 +624,6 @@ mod test {
             Ok(data) => data,
             Err(error) => panic!("Problem: {:?}", error),
         };
-        assert_eq!(AccountType::Order as u8, order_data.kind);
         assert_eq!(true, order_data.is_initialized());
         assert_eq!(OrderStatus::Paid as u8, order_data.status);
         assert_eq!(merchant_account_pubkey.to_bytes(), order_data.merchant);
@@ -945,7 +943,6 @@ mod test {
                 },
                 Err(error) => panic!("Problem: {:?}", error),
             };
-            assert_eq!(AccountType::Subscription as u8, subscription_data.kind);
             assert_eq!(
                 (SubscriptionStatus::Initialized as u8),
                 subscription_data.status
@@ -968,18 +965,14 @@ mod test {
     #[tokio::test]
     async fn test_subscribe() {
         let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
-        assert!(
-            (run_subscribe_tests(1000000, "cable subscription", "basic", packages).await).is_ok()
-        );
+        assert!((run_subscribe_tests(1000000, "cable subscription", "basic", packages).await).is_ok());
     }
 
     #[tokio::test]
     /// test what happens when there are 0 packages
     async fn test_subscribe_no_packages() {
         let packages = r#"{"packages":[]}"#;
-        assert!(
-            (run_subscribe_tests(1337, "cable subscription", "basic", packages).await).is_err()
-        );
+        assert!((run_subscribe_tests(1337, "cable subscription", "basic", packages).await).is_err());
     }
 
     #[tokio::test]

@@ -1,7 +1,7 @@
 use crate::{
     engine::constants::{PROGRAM_OWNER, SPONSOR_FEE},
     error::PaymentProcessorError,
-    state::{AccountType, MerchantAccount, OrderAccount, OrderStatus, Serdes},
+    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
     utils::{get_amounts, get_order_account_size},
 };
 use solana_program::program_pack::Pack;
@@ -241,7 +241,6 @@ pub fn process_express_checkout(
     let mut order_account_data = order_info.try_borrow_mut_data()?;
     // Saving order information...
     let order = OrderAccount {
-        kind: AccountType::Order as u8,
         status: OrderStatus::Paid as u8,
         created: *timestamp,
         modified: *timestamp,

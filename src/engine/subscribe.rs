@@ -1,8 +1,7 @@
 use crate::engine::json::{OrderSubscription, Packages};
 use crate::error::PaymentProcessorError;
 use crate::state::{
-    AccountType, MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
-    SubscriptionStatus,
+    MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount, SubscriptionStatus,
 };
 use crate::utils::get_subscription_account_size;
 use serde_json::Error as JSONError;
@@ -53,8 +52,7 @@ pub fn process_subscribe(
     // get the order account
     let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
     // ensure this order is for this subscription
-    let order_json_data: Result<OrderSubscription, JSONError> =
-        serde_json::from_str(&order_account.data);
+    let order_json_data: Result<OrderSubscription, JSONError> = serde_json::from_str(&order_account.data);
     let expected_subscription = match order_json_data {
         Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
         Ok(data) => data.subscription,
@@ -79,8 +77,7 @@ pub fn process_subscribe(
     let package_name = name_vec[1];
 
     // ensure the merchant has a subscription by this name
-    let merchant_json_data: Result<Packages, JSONError> =
-        serde_json::from_str(&merchant_account.data);
+    let merchant_json_data: Result<Packages, JSONError> = serde_json::from_str(&merchant_account.data);
     let packages = match merchant_json_data {
         Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
         Ok(data) => data.packages,
@@ -130,7 +127,6 @@ pub fn process_subscribe(
     let mut subscription_data = subscription_info.try_borrow_mut_data()?;
     // Saving subscription information...
     let subscription = SubscriptionAccount {
-        kind: AccountType::Subscription as u8,
         status: SubscriptionStatus::Initialized as u8,
         owner: signer_info.key.to_bytes(),
         merchant: merchant_info.key.to_bytes(),
