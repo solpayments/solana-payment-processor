@@ -18,6 +18,13 @@ pub trait Serdes: Sized + BorshSerialize + BorshDeserialize {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
+pub enum AccountType {
+    Merchant = 0,
+    Order = 1,
+    Subscription = 2,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
 pub enum MerchantStatus {
     Uninitialized = 0,
     Initialized = 1,
@@ -25,6 +32,7 @@ pub enum MerchantStatus {
 
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct MerchantAccount {
+    pub kind: u8,
     pub status: u8,
     pub owner: PublicKey,
     pub sponsor: PublicKey,
@@ -45,6 +53,7 @@ pub enum OrderStatus {
 
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct OrderAccount {
+    pub kind: u8,
     pub status: u8,
     pub created: UnixTimestamp,
     pub modified: UnixTimestamp,
@@ -69,6 +78,7 @@ pub enum SubscriptionStatus {
 
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct SubscriptionAccount {
+    pub kind: u8,
     pub status: u8,
     pub owner: PublicKey,
     pub merchant: PublicKey,
@@ -93,8 +103,11 @@ impl IsInitialized for MerchantAccount {
 }
 
 impl MerchantAccount {
-    pub const MIN_LEN: usize =
-        size_of::<u8>() + size_of::<PublicKey>() + size_of::<PublicKey>() + size_of::<u64>();
+    pub const MIN_LEN: usize = size_of::<u8>()
+        + size_of::<u8>()
+        + size_of::<PublicKey>()
+        + size_of::<PublicKey>()
+        + size_of::<u64>();
 }
 
 // impl for OrderAccount
@@ -110,6 +123,7 @@ impl IsInitialized for OrderAccount {
 
 impl OrderAccount {
     pub const MIN_LEN: usize = size_of::<u8>()
+        + size_of::<u8>()
         + size_of::<UnixTimestamp>()
         + size_of::<UnixTimestamp>()
         + size_of::<PublicKey>()
@@ -133,6 +147,7 @@ impl IsInitialized for SubscriptionAccount {
 
 impl SubscriptionAccount {
     pub const MIN_LEN: usize = size_of::<u8>()
+        + size_of::<u8>()
         + size_of::<PublicKey>()
         + size_of::<PublicKey>()
         + size_of::<UnixTimestamp>()

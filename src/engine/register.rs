@@ -1,6 +1,6 @@
 use crate::{
     engine::constants::{MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER},
-    state::{MerchantAccount, MerchantStatus, Serdes},
+    state::{AccountType, MerchantAccount, MerchantStatus, Serdes},
     utils::get_merchant_account_size,
 };
 use solana_program::{
@@ -68,6 +68,7 @@ pub fn process_register_merchant(
     let mut merchant_account_data = merchant_info.try_borrow_mut_data()?;
     // save it
     let merchant = MerchantAccount {
+        kind: AccountType::Merchant as u8,
         status: MerchantStatus::Initialized as u8,
         owner: signer_info.key.to_bytes(),
         sponsor: match possible_sponsor_info {
@@ -82,7 +83,7 @@ pub fn process_register_merchant(
                     result = value;
                 }
                 result
-            },
+            }
         },
         data,
     };
