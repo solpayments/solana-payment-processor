@@ -72,11 +72,9 @@ pub fn process_subscribe(
     if merchant_info.key.to_bytes() != order_account.merchant {
         return Err(ProgramError::InvalidAccountData);
     }
-    // ensure the order id is this subscription name
+    // ensure the merchant has a subscription by this name
     let name_vec: Vec<&str> = name.split(":").collect();
     let package_name = name_vec[1];
-
-    // ensure the merchant has a subscription by this name
     let merchant_json_data: Result<Packages, JSONError> = serde_json::from_str(&merchant_account.data);
     let packages = match merchant_json_data {
         Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
