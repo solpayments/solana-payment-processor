@@ -1,7 +1,8 @@
 use crate::{
     engine::pay::process_express_checkout, engine::register::process_register_merchant,
     engine::withdraw::process_withdraw_payment, instruction::PaymentProcessorInstruction,
-    engine::subscribe::process_subscribe
+    engine::subscribe::process_subscribe,
+    engine::renew::process_renew_subscription,
 };
 use borsh::BorshDeserialize;
 use solana_program::{
@@ -39,6 +40,10 @@ impl PaymentProcessorInstruction {
             PaymentProcessorInstruction::Subscribe { name, data } => {
                 msg!("SolPayments Instruction: Subscribe");
                 process_subscribe(program_id, accounts, name, data)
+            }
+            PaymentProcessorInstruction::RenewSubscription { quantity } => {
+                msg!("SolPayments Instruction: RenewSubscription");
+                process_renew_subscription(program_id, accounts, quantity)
             }
         }
     }

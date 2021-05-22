@@ -95,6 +95,21 @@ pub enum PaymentProcessorInstruction {
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
     },
+    /// Renew a subscription
+    ///
+    /// Accounts expected:
+    ///
+    /// 0. `[signer]` The account of the person initializing the transaction
+    /// 1. `[writable]` The subscription account.  Owned by this program
+    /// 2. `[]` The merchant account.  Owned by this program
+    /// 3. `[]` The order account.  Owned by this program
+    /// 4. `[]` The clock sysvar
+    RenewSubscription {
+        /// the number of periods to renew e.g. if the subscription period is a year
+        /// you can choose to renew for 1 year, 2 years, n years, etc
+        #[allow(dead_code)] // not dead code..
+        quantity: i64,
+    },
 }
 
 /// Creates an 'RegisterMerchant' instruction.
