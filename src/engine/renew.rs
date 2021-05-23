@@ -1,7 +1,6 @@
-use crate::engine::json::{OrderSubscription, Packages};
+use crate::engine::common::subscribe_checks;
 use crate::error::PaymentProcessorError;
-use crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount};
-use serde_json::Error as JSONError;
+use crate::state::{Serdes, SubscriptionAccount};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
@@ -25,72 +24,23 @@ pub fn process_renew_subscription(
     let order_info = next_account_info(account_info_iter)?;
     let clock_sysvar_info = next_account_info(account_info_iter)?;
 
-    // ensure signer can sign
-    if !signer_info.is_signer {
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-    // ensure merchant & order & subscription accounts are owned by this program
-    if *merchant_info.owner != *program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    if *order_info.owner != *program_id {
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    // ensure subscription account is owned by this program
     if *subscription_info.owner != *program_id {
         return Err(ProgramError::IncorrectProgramId);
-    }
-    // get the merchant account
-    let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
-    if !merchant_account.is_initialized() {
-        return Err(ProgramError::UninitializedAccount);
-    }
-    // get the order account
-    let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
-    // ensure this order is for this subscription
-    let order_json_data: Result<OrderSubscription, JSONError> =
-        serde_json::from_str(&order_account.data);
-    let expected_subscription = match order_json_data {
-        Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
-        Ok(data) => data.subscription,
-    };
-    if expected_subscription != subscription_info.key.to_string() {
-        return Err(PaymentProcessorError::WrongOrderAccount.into());
-    }
-    // ensure we have the right payer
-    if signer_info.key.to_bytes() != order_account.payer {
-        return Err(PaymentProcessorError::WrongPayer.into());
-    }
-    // ensure order account is paid
-    if order_account.status != (OrderStatus::Paid as u8) {
-        return Err(PaymentProcessorError::NotPaid.into());
-    }
-    // ensure the order account belongs to this merchant
-    if merchant_info.key.to_bytes() != order_account.merchant {
-        return Err(ProgramError::InvalidAccountData);
     }
     // get the subscription account
     let mut subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
     if !subscription_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
-    // ensure the merchant has a subscription by this name
-    let name_vec: Vec<&str> = subscription_account.name.split(":").collect();
-    let package_name = name_vec[1];
-    let merchant_json_data: Result<Packages, JSONError> =
-        serde_json::from_str(&merchant_account.data);
-    let packages = match merchant_json_data {
-        Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
-        Ok(data) => data.packages,
-    };
-    // WARNING: if more than one sub of the same name is found, take the first one
-    // TODO: verify ^^
-    let package = packages
-        .into_iter()
-        .find(|package| package.name == package_name);
-    let package = match package {
-        None => return Err(PaymentProcessorError::InvalidSubscriptionPackage.into()),
-        Some(value) => value,
-    };
+    let (order_account, package) = subscribe_checks(
+        program_id,
+        signer_info,
+        merchant_info,
+        order_info,
+        subscription_info,
+        &subscription_account.name,
+    )?;
     // ensure the amount paid is as expected
     let expected_amount = (quantity as u64) * package.price;
     if expected_amount > order_account.paid_amount {
