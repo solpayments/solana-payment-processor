@@ -64,8 +64,7 @@ pub fn subscribe_checks(
         Err(_error) => return Err(PaymentProcessorError::InvalidSubscriptionData.into()),
         Ok(data) => data.packages,
     };
-    // WARNING: if more than one sub of the same name is found, take the first one
-    // TODO: verify ^^
+    // NB: if the are duplicates, take the first one --> verified in a test
     let package = packages
         .into_iter()
         .find(|package| package.name == package_name);

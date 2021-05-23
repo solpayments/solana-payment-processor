@@ -1029,11 +1029,23 @@ mod test {
     /// test what happens when there are duplicate packages
     async fn test_subscribe_duplicate_packages() {
         let packages = r#"{"packages":[{"name":"a","price":100,"duration":720},{"name":"a","price":222,"duration":262800}]}"#;
-        assert!(
-            (run_subscribe_tests(100, "cable subscription", "a", packages).await)
-                .0
-                .is_ok()
-        );
+
+        let result = run_subscribe_tests(100, "cable subscription", "a", packages).await;
+        assert!(result.0.is_ok());
+
+        let _ = match result.1 {
+            None => (),
+            Some(value) => {
+                let subscription_account = value.0;
+                // use the duration of the first package in the array to check
+                // that the subscription was created using the first array element
+                assert_eq!(
+                    720,
+                    subscription_account.period_end - subscription_account.period_start
+                );
+                ()
+            }
+        };
     }
 
     #[tokio::test]
