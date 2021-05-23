@@ -1083,9 +1083,6 @@ mod test {
         // create the subscription
         let result = run_subscribe_tests(1000000, "demo", "short", packages).await;
         assert!(result.0.is_ok());
-        // sleep for 1 second to ensure subscription expires
-        // thread::sleep(Duration::from_millis(1000));
-
         let subscribe_result = result.1;
         let _ = match subscribe_result {
             None => (),
@@ -1127,7 +1124,23 @@ mod test {
                     Ok(())
                 );
 
-                // TODO: test timestamps to assert that renewal happened
+                // assert that period end has been updates
+                let subscription_account2 = subscribe_result.1 .2.get_account(subscription).await;
+                let subscription_account2 = match subscription_account2 {
+                    Ok(data) => match data {
+                        None => panic!("Oo"),
+                        Some(value) => match SubscriptionAccount::unpack(&value.data) {
+                            Ok(data) => data,
+                            Err(error) => panic!("Problem: {:?}", error),
+                        },
+                    },
+                    Err(error) => panic!("Problem: {:?}", error),
+                };
+                assert_eq!(
+                    // the new period_end is equal to the old period_end + (1 * 600)
+                    subscription_account.period_end + 600,
+                    subscription_account2.period_end
+                );
 
                 return ();
             }
