@@ -95,6 +95,21 @@ pub enum PaymentProcessorInstruction {
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
     },
+    /// Renew a subscription
+    ///
+    /// Accounts expected:
+    ///
+    /// 0. `[signer]` The account of the person initializing the transaction
+    /// 1. `[writable]` The subscription account.  Owned by this program
+    /// 2. `[]` The merchant account.  Owned by this program
+    /// 3. `[]` The order account.  Owned by this program
+    /// 4. `[]` The clock sysvar
+    RenewSubscription {
+        /// the number of periods to renew e.g. if the subscription period is a year
+        /// you can choose to renew for 1 year, 2 years, n years, etc
+        #[allow(dead_code)] // not dead code..
+        quantity: i64,
+    },
 }
 
 /// Creates an 'RegisterMerchant' instruction.
@@ -220,6 +235,30 @@ pub fn subscribe(
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
         data: PaymentProcessorInstruction::Subscribe { name, data }
+            .try_to_vec()
+            .unwrap(),
+    }
+}
+
+/// creates a 'RenewSubscription' instruction
+pub fn renew_subscription(
+    program_id: Pubkey,
+    signer: Pubkey,
+    subscription: Pubkey,
+    merchant: Pubkey,
+    order: Pubkey,
+    quantity: i64,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(subscription, false),
+            AccountMeta::new_readonly(merchant, false),
+            AccountMeta::new_readonly(order, false),
+            AccountMeta::new_readonly(sysvar::clock::id(), false),
+        ],
+        data: PaymentProcessorInstruction::RenewSubscription { quantity }
             .try_to_vec()
             .unwrap(),
     }
@@ -875,7 +914,10 @@ mod test {
         subscription_name: &str,
         package_name: &str,
         merchant_data: &str,
-    ) -> Result<(), TransportError> {
+    ) -> (
+        Result<(), TransportError>,
+        Option<(SubscriptionAccount, MerchantResult)>,
+    ) {
         let name = format!("{}:{}", subscription_name, package_name);
         let cloned_name = name.clone();
 
@@ -907,9 +949,8 @@ mod test {
         .await;
 
         let program_id = merchant_result.0;
-        let mut banks_client = merchant_result.2;
         let merchant_account_pubkey = merchant_result.1;
-        let payer = merchant_result.3;
+        let payer = &merchant_result.3;
         let recent_blockhash = merchant_result.4;
 
         // call subscribe ix
@@ -925,14 +966,13 @@ mod test {
             )],
             Some(&payer.pubkey()),
         );
-        transaction.sign(&[&payer], recent_blockhash);
-        // assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
+        transaction.sign(&[payer], recent_blockhash);
 
-        let result = banks_client.process_transaction(transaction).await;
+        let result = merchant_result.2.process_transaction(transaction).await;
 
         if result.is_ok() {
             // test contents of subscription token account
-            let subscription_account = banks_client.get_account(subscription).await;
+            let subscription_account = &merchant_result.2.get_account(subscription).await;
             let subscription_data = match subscription_account {
                 Ok(data) => match data {
                     None => panic!("Oo"),
@@ -957,54 +997,165 @@ mod test {
                 Pubkey::new_from_array(subscription_data.merchant)
             );
             assert_eq!(String::from("{}"), subscription_data.data);
+
+            return (result, Some((subscription_data, merchant_result)));
         }
 
-        result
+        (result, Option::None)
     }
 
     #[tokio::test]
     async fn test_subscribe() {
         let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
-        assert!((run_subscribe_tests(1000000, "cable subscription", "basic", packages).await).is_ok());
+        assert!(
+            (run_subscribe_tests(1000000, "cable subscription", "basic", packages).await)
+                .0
+                .is_ok()
+        );
     }
 
     #[tokio::test]
     /// test what happens when there are 0 packages
     async fn test_subscribe_no_packages() {
         let packages = r#"{"packages":[]}"#;
-        assert!((run_subscribe_tests(1337, "cable subscription", "basic", packages).await).is_err());
+        assert!(
+            (run_subscribe_tests(1337, "cable subscription", "basic", packages).await)
+                .0
+                .is_err()
+        );
     }
 
     #[tokio::test]
     /// test what happens when there are duplicate packages
     async fn test_subscribe_duplicate_packages() {
         let packages = r#"{"packages":[{"name":"a","price":100,"duration":720},{"name":"a","price":222,"duration":262800}]}"#;
-        assert!((run_subscribe_tests(100, "cable subscription", "a", packages).await).is_ok());
+
+        let result = run_subscribe_tests(100, "cable subscription", "a", packages).await;
+        assert!(result.0.is_ok());
+
+        let _ = match result.1 {
+            None => (),
+            Some(value) => {
+                let subscription_account = value.0;
+                // use the duration of the first package in the array to check
+                // that the subscription was created using the first array element
+                assert_eq!(
+                    720,
+                    subscription_account.period_end - subscription_account.period_start
+                );
+                ()
+            }
+        };
     }
 
     #[tokio::test]
     /// test what happens when the package is not found
     async fn test_subscribe_package_not_found() {
         let packages = r#"{"packages":[{"name":"a","price":100,"duration":720}]}"#;
-        assert!((run_subscribe_tests(100, "cable subscription", "zz", packages).await).is_err());
+        assert!(
+            (run_subscribe_tests(100, "cable subscription", "zz", packages).await)
+                .0
+                .is_err()
+        );
     }
 
     #[tokio::test]
     /// test what happens when there is no packages object in the JSON
     async fn test_subscribe_no_packages_json() {
-        assert!((run_subscribe_tests(250, "sub", "package", r#"{}"#).await).is_err());
+        assert!((run_subscribe_tests(250, "sub", "package", r#"{}"#).await)
+            .0
+            .is_err());
     }
 
     #[tokio::test]
     /// test what happens when there is no valid JSON
     async fn test_subscribe_no_json() {
-        assert!((run_subscribe_tests(250, "sub", "package", "what is?").await).is_err());
+        assert!(
+            (run_subscribe_tests(250, "sub", "package", "what is?").await)
+                .0
+                .is_err()
+        );
     }
 
     #[tokio::test]
     /// test what happens when the amount paid is insufficient
     async fn test_subscribe_not_enough_paid() {
         let packages = r#"{"packages":[{"name":"basic","price":100,"duration":720}]}"#;
-        assert!((run_subscribe_tests(10, "Netflix", "basic", packages).await).is_err());
+        assert!(
+            (run_subscribe_tests(10, "Netflix", "basic", packages).await)
+                .0
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_subscription_renewal() {
+        // create a package that lasts only 1 second
+        let packages = r#"{"packages":[{"name":"short","price":999999,"duration":1}]}"#;
+        // create the subscription
+        let result = run_subscribe_tests(1000000, "demo", "short", packages).await;
+        assert!(result.0.is_ok());
+        let subscribe_result = result.1;
+        let _ = match subscribe_result {
+            None => (),
+            Some(mut subscribe_result) => {
+                let subscription_account = subscribe_result.0;
+                let subscription = Pubkey::create_with_seed(
+                    &subscribe_result.1 .3.pubkey(), // payer
+                    &subscription_account.name,
+                    &subscribe_result.1 .0, // program_id
+                )
+                .unwrap();
+
+                let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
+
+                let (order_acc_pubkey, _seller_account_pubkey, _mint_keypair) = create_order(
+                    999999 * 600,
+                    &String::from("short:1"),
+                    &String::from(""),
+                    Some(order_data),
+                    &mut subscribe_result.1,
+                )
+                .await;
+
+                // call subscription  ix
+                let mut transaction = Transaction::new_with_payer(
+                    &[renew_subscription(
+                        subscribe_result.1 .0,          // program_id,
+                        subscribe_result.1 .3.pubkey(), // payer,
+                        subscription,
+                        Pubkey::new_from_array(subscription_account.merchant),
+                        order_acc_pubkey,
+                        600,
+                    )],
+                    Some(&subscribe_result.1 .3.pubkey()),
+                );
+                transaction.sign(&[&subscribe_result.1 .3], subscribe_result.1 .4);
+                assert_matches!(
+                    subscribe_result.1 .2.process_transaction(transaction).await,
+                    Ok(())
+                );
+
+                // assert that period end has been updates
+                let subscription_account2 = subscribe_result.1 .2.get_account(subscription).await;
+                let subscription_account2 = match subscription_account2 {
+                    Ok(data) => match data {
+                        None => panic!("Oo"),
+                        Some(value) => match SubscriptionAccount::unpack(&value.data) {
+                            Ok(data) => data,
+                            Err(error) => panic!("Problem: {:?}", error),
+                        },
+                    },
+                    Err(error) => panic!("Problem: {:?}", error),
+                };
+                assert_eq!(
+                    // the new period_end is equal to the old period_end + (1 * 600)
+                    subscription_account.period_end + 600,
+                    subscription_account2.period_end
+                );
+
+                return ();
+            }
+        };
     }
 }

@@ -1,7 +1,8 @@
 use crate::{
     engine::pay::process_express_checkout, engine::register::process_register_merchant,
     engine::withdraw::process_withdraw_payment, instruction::PaymentProcessorInstruction,
-    engine::subscribe::process_subscribe
+    engine::subscribe::process_subscribe,
+    engine::renew::process_renew_subscription,
 };
 use borsh::BorshDeserialize;
 use solana_program::{
@@ -20,7 +21,7 @@ impl PaymentProcessorInstruction {
             .map_err(|_| ProgramError::InvalidInstructionData)?;
         match instruction {
             PaymentProcessorInstruction::RegisterMerchant { seed, fee, data } => {
-                msg!("SolPayments Instruction: RegisterMerchant");
+                msg!("SolPayments: RegisterMerchant");
                 process_register_merchant(program_id, accounts, seed, fee, data)
             }
             PaymentProcessorInstruction::ExpressCheckout {
@@ -29,16 +30,20 @@ impl PaymentProcessorInstruction {
                 secret,
                 data,
             } => {
-                msg!("SolPayments Instruction: ExpressCheckout");
+                msg!("SolPayments: ExpressCheckout");
                 process_express_checkout(program_id, accounts, amount, order_id, secret, data)
             }
             PaymentProcessorInstruction::Withdraw => {
-                msg!("SolPayments Instruction: Withdraw");
+                msg!("SolPayments: Withdraw");
                 process_withdraw_payment(program_id, accounts)
             }
             PaymentProcessorInstruction::Subscribe { name, data } => {
-                msg!("SolPayments Instruction: Subscribe");
+                msg!("SolPayments: Subscribe");
                 process_subscribe(program_id, accounts, name, data)
+            }
+            PaymentProcessorInstruction::RenewSubscription { quantity } => {
+                msg!("SolPayments: RenewSubscription");
+                process_renew_subscription(program_id, accounts, quantity)
             }
         }
     }

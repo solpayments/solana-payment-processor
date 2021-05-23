@@ -1,0 +1,68 @@
+use crate::engine::common::subscribe_checks;
+use crate::error::PaymentProcessorError;
+use crate::state::{Serdes, SubscriptionAccount};
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    clock::Clock,
+    entrypoint::ProgramResult,
+    msg,
+    program_error::ProgramError,
+    program_pack::IsInitialized,
+    pubkey::Pubkey,
+    sysvar::Sysvar,
+};
+
+pub fn process_renew_subscription(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    quantity: i64,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+
+    let signer_info = next_account_info(account_info_iter)?;
+    let subscription_info = next_account_info(account_info_iter)?;
+    let merchant_info = next_account_info(account_info_iter)?;
+    let order_info = next_account_info(account_info_iter)?;
+    let clock_sysvar_info = next_account_info(account_info_iter)?;
+
+    // ensure subscription account is owned by this program
+    if *subscription_info.owner != *program_id {
+        msg!("Error: Wrong owner for subscription account");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    // get the subscription account
+    let mut subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
+    if !subscription_account.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    let (order_account, package) = subscribe_checks(
+        program_id,
+        signer_info,
+        merchant_info,
+        order_info,
+        subscription_info,
+        &subscription_account.name,
+    )?;
+    // ensure the amount paid is as expected
+    let expected_amount = (quantity as u64) * package.price;
+    if expected_amount > order_account.paid_amount {
+        return Err(PaymentProcessorError::NotFullyPaid.into());
+    }
+    // update subscription account
+    let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
+    if timestamp > &subscription_account.period_end {
+        // had ended so we start a new period
+        subscription_account.period_start = *timestamp;
+        subscription_account.period_end = *timestamp + (package.duration * quantity);
+    } else {
+        // not yet ended so we add the time to the end of the current period
+        subscription_account.period_end =
+            subscription_account.period_end + (package.duration * quantity);
+    }
+    SubscriptionAccount::pack(
+        &subscription_account,
+        &mut subscription_info.data.borrow_mut(),
+    );
+
+    Ok(())
+}
