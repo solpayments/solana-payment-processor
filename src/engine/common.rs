@@ -3,7 +3,7 @@ use crate::error::PaymentProcessorError;
 use crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes};
 use serde_json::Error as JSONError;
 use solana_program::{
-    account_info::AccountInfo, program_error::ProgramError, program_pack::IsInitialized,
+    account_info::AccountInfo, msg, program_error::ProgramError, program_pack::IsInitialized,
     pubkey::Pubkey,
 };
 
@@ -21,9 +21,11 @@ pub fn subscribe_checks(
     }
     // ensure merchant & order accounts are owned by this program
     if *merchant_info.owner != *program_id {
+        msg!("Error: Wrong owner for merchant account");
         return Err(ProgramError::IncorrectProgramId);
     }
     if *order_info.owner != *program_id {
+        msg!("Error: Wrong owner for order account");
         return Err(ProgramError::IncorrectProgramId);
     }
     // get the merchant account

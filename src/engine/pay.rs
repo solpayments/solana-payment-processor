@@ -53,6 +53,7 @@ pub fn process_express_checkout(
     }
     // ensure merchant account is owned by this program
     if *merchant_info.owner != *program_id {
+        msg!("Error: Wrong owner for merchant account");
         return Err(ProgramError::IncorrectProgramId);
     }
     // get the merchant account
@@ -75,6 +76,7 @@ pub fn process_express_checkout(
     }
     // check that the provided sponsor is correct
     if *sponsor_info.key != Pubkey::new_from_array(merchant_account.sponsor) {
+        msg!("Error: Sponsor account is incorrect");
         return Err(PaymentProcessorError::WrongSponsor.into());
     }
     // create order account
