@@ -1464,6 +1464,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "murmur3"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ead5388e485d38e622630c6b05afd3761a6701ff15c55b279ea5b31dcb62cff"
+
+[[package]]
 name = "net2"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2244,6 +2250,7 @@ dependencies = [
  "arrayref",
  "assert_matches",
  "borsh 0.9.0",
+ "murmur3",
  "num-derive",
  "num-traits",
  "serde",
