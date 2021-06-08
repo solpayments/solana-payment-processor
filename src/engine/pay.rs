@@ -105,8 +105,8 @@ pub fn process_express_checkout(
         ],
     )?;
 
-    // next we are going to try and create a token account owned by the order
-    // account and whose address is 'owned' by the order account
+    // next we are going to try and create a token account owned by the program
+    // but whose address is derived from the order account
     // this is remarkably similar to spl_associated_token_account::create_associated_token_account
     // derive the token account address
     let (associated_token_address, bump_seed) = Pubkey::find_program_address(
