@@ -268,6 +268,7 @@ pub fn renew_subscription(
 mod test {
     use {
         super::*,
+        crate::engine::common::get_hashed_seed,
         crate::engine::constants::{
             MERCHANT, MIN_FEE_IN_LAMPORTS, PDA_SEED, PROGRAM_OWNER, SPONSOR_FEE,
         },
@@ -932,7 +933,10 @@ mod test {
         // we reference merchant_result directly so that we borrow all its values
         let subscription = Pubkey::create_with_seed(
             &merchant_result.3.pubkey(), // payer
-            &name,
+            &get_hashed_seed(
+                &merchant_result.1, // the merchant pubkey
+                package_name,
+            ),
             &merchant_result.0, // program_id
         )
         .unwrap();
@@ -1102,7 +1106,10 @@ mod test {
                 let subscription_account = subscribe_result.0;
                 let subscription = Pubkey::create_with_seed(
                     &subscribe_result.1 .3.pubkey(), // payer
-                    &subscription_account.name,
+                    &get_hashed_seed(
+                        &subscribe_result.1 .1, // the merchant pubkey
+                        "short",  // the package name
+                    ),
                     &subscribe_result.1 .0, // program_id
                 )
                 .unwrap();
