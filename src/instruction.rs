@@ -163,7 +163,7 @@ pub fn express_checkout(
         program_id,
         accounts: vec![
             AccountMeta::new(signer, true),
-            AccountMeta::new(order, false),
+            AccountMeta::new(order, true),
             AccountMeta::new_readonly(merchant, false),
             AccountMeta::new(seller_token, false),
             AccountMeta::new(buyer_token, false),
@@ -277,7 +277,7 @@ mod test {
             MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
             SubscriptionStatus,
         },
-        crate::utils::{get_amounts, get_order_account_pubkey, get_order_account_size},
+        crate::utils::{get_amounts, get_order_account_size},
         assert_matches::*,
         serde_json::Value,
         solana_program::{
@@ -429,12 +429,14 @@ mod test {
         payer: &Keypair,
         recent_blockhash: Hash,
     ) -> (Pubkey, Pubkey) {
-        let order_acc = get_order_account_pubkey(&order_id, &payer.pubkey(), program_id);
+
+        let order_acc_keypair = Keypair::new();
+
         let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
 
         let (seller_token, _bump_seed) = Pubkey::find_program_address(
             &[
-                &order_acc.to_bytes(),
+                &order_acc_keypair.pubkey().to_bytes(),
                 &spl_token::id().to_bytes(),
                 &mint.to_bytes(),
             ],
@@ -458,7 +460,7 @@ mod test {
             &[express_checkout(
                 *program_id,
                 payer.pubkey(),
-                order_acc,
+                order_acc_keypair.pubkey(),
                 *merchant,
                 seller_token,
                 *buyer_token,
@@ -473,10 +475,10 @@ mod test {
             )],
             Some(&payer.pubkey()),
         );
-        transaction.sign(&[payer], recent_blockhash);
+        transaction.sign(&[payer, &order_acc_keypair], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
 
-        (order_acc, seller_token)
+        (order_acc_keypair.pubkey(), seller_token)
     }
 
     async fn create_order(
@@ -1108,7 +1110,7 @@ mod test {
                     &subscribe_result.1 .3.pubkey(), // payer
                     &get_hashed_seed(
                         &subscribe_result.1 .1, // the merchant pubkey
-                        "short",  // the package name
+                        "short",                // the package name
                     ),
                     &subscribe_result.1 .0, // program_id
                 )
