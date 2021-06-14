@@ -88,11 +88,9 @@ pub fn process_express_checkout(
     // the order account amount includes the fee in SOL
     let order_account_amount = Rent::default().minimum_balance(order_account_size);
     invoke(
-        &system_instruction::create_account_with_seed(
+        &system_instruction::create_account(
             signer_info.key,
             order_info.key,
-            signer_info.key,
-            &order_id,
             order_account_amount,
             order_account_size as u64,
             program_id,
@@ -100,7 +98,6 @@ pub fn process_express_checkout(
         &[
             signer_info.clone(),
             order_info.clone(),
-            signer_info.clone(),
             system_program_info.clone(),
         ],
     )?;
