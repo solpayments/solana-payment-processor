@@ -6,7 +6,6 @@ use crate::{
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -14,8 +13,6 @@ use solana_program::{
     sysvar::{rent::Rent, Sysvar},
 };
 use std::str::FromStr;
-use std::io::Cursor;
-use murmur3::murmur3_32;
 
 pub fn process_register_merchant(
     program_id: &Pubkey,
@@ -32,12 +29,6 @@ pub fn process_register_merchant(
     let rent_sysvar_info = next_account_info(account_info_iter)?;
     let possible_sponsor_info = next_account_info(account_info_iter);
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
-
-    let x = "[redacted]";
-    let yy = murmur3_32(&mut Cursor::new(x), 0).unwrap();
-
-    msg!(">>>>>> {:?}", yy);
-    return Err(ProgramError::MissingRequiredSignature);
 
     // ensure signer can sign
     if !signer_info.is_signer {
