@@ -1,6 +1,5 @@
-use crate::engine::constants::{MAX_SEED_LEN, STRING_SIZE};
+use crate::engine::constants::STRING_SIZE;
 use crate::state::{MerchantAccount, OrderAccount, SubscriptionAccount};
-use solana_program::pubkey::Pubkey;
 
 /// Given the expected amount, calculate the fee and take home amount
 /// Currently fee is 0.3% with a minimum fee of 1 lamport
@@ -45,21 +44,9 @@ pub fn get_subscription_account_size(name: &String, data: &String) -> usize {
     get_account_size(SubscriptionAccount::MIN_LEN, &vec![name, data])
 }
 
-// Derive the order account pubkey
-pub fn get_order_account_pubkey(
-    order_id: &String,
-    wallet_pk: &Pubkey,
-    program_id: &Pubkey,
-) -> Pubkey {
-    match &order_id.get(..MAX_SEED_LEN) {
-        Some(substring) => Pubkey::create_with_seed(wallet_pk, substring, &program_id).unwrap(),
-        None => Pubkey::create_with_seed(wallet_pk, &order_id, &program_id).unwrap(),
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use {super::*, solana_program::sysvar, solana_program_test::*, std::str::FromStr};
+    use {super::*, solana_program_test::*};
 
     #[tokio::test]
     async fn test_get_amounts() {
@@ -94,18 +81,6 @@ mod test {
             )
         );
         assert_eq!(422, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type"), &String::from(r#"{"a": "b"}"#)));
-    }
-
-    #[tokio::test]
-    async fn test_get_order_account_pubkey() {
-        assert_eq!(
-            Pubkey::from_str(&"2QaTeJJR9SYvzwZNbRFNpHhQZaxi3o35qb9qJAjBK2Rn").unwrap(),
-            get_order_account_pubkey(
-                &String::from("123456"),
-                &solana_program::system_program::id(),
-                &sysvar::clock::id()
-            )
-        );
     }
 
     #[tokio::test]
