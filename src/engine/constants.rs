@@ -4,8 +4,6 @@ pub const MERCHANT: &str = "merchant";
 pub const PDA_SEED: &[u8] = b"sol_payment_processor";
 /// the program owner
 pub const PROGRAM_OWNER: &str = "mosh782eoKyPca9eotWfepHVSKavjDMBjNkNE3Gge6Z";
-/// maximum length of derived `Pubkey` seed
-pub const MAX_SEED_LEN: usize = 32;
 /// minimum transaction fee percentage
 pub const MIN_FEE_IN_LAMPORTS: u64 = 5000;
 /// sponsor fee percentage
