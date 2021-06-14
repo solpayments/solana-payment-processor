@@ -85,8 +85,7 @@ pub fn subscribe_checks(
 /// cryptographically secure hashing algorithm.  We mostly need something fast
 /// with reasonably low chances of collisions
 pub fn hash(input: &str) -> String {
-    let hash_result = murmur3_32(&mut Cursor::new(input), 0).unwrap();
-    format!("{}", hash_result)
+    format!("{}", murmur3_32(&mut Cursor::new(input), 0).unwrap())
 }
 
 /// Get a hashed seed phrase
