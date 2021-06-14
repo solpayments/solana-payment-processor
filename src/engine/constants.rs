@@ -10,6 +10,8 @@ pub const MAX_SEED_LEN: usize = 32;
 pub const MIN_FEE_IN_LAMPORTS: u64 = 5000;
 /// sponsor fee percentage
 pub const SPONSOR_FEE: u128 = 3;
+/// default data value
+pub const DEFAULT_DATA: &str = "{}";
 // these are purely by trial and error ... TODO: understand these some more
 /// the mem size of string ... apparently
 pub const STRING_SIZE: usize = 4;

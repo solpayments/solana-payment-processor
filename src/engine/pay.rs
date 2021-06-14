@@ -1,5 +1,5 @@
 use crate::{
-    engine::constants::{PROGRAM_OWNER, SPONSOR_FEE},
+    engine::constants::{DEFAULT_DATA, PROGRAM_OWNER, SPONSOR_FEE},
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
     utils::{get_amounts, get_order_account_size},
@@ -81,7 +81,7 @@ pub fn process_express_checkout(
     }
     // create order account
     let data = match maybe_data {
-        None => String::from("{}"),
+        None => String::from(DEFAULT_DATA),
         Some(value) => value,
     };
     let order_account_size = get_order_account_size(&order_id, &secret, &data);

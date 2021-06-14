@@ -1,4 +1,5 @@
 use crate::engine::common::subscribe_checks;
+use crate::engine::constants::DEFAULT_DATA;
 use crate::error::PaymentProcessorError;
 use crate::state::{Serdes, SubscriptionAccount, SubscriptionStatus};
 use crate::utils::get_subscription_account_size;
@@ -44,7 +45,7 @@ pub fn process_subscribe(
     }
     // get subscription account size
     let data = match maybe_data {
-        None => String::from("{}"),
+        None => String::from(DEFAULT_DATA),
         Some(value) => value,
     };
     let account_size = get_subscription_account_size(&name, &data);

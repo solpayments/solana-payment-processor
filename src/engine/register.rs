@@ -1,5 +1,5 @@
 use crate::{
-    engine::constants::{MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER},
+    engine::constants::{DEFAULT_DATA, MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER},
     state::{MerchantAccount, MerchantStatus, Serdes},
     utils::get_merchant_account_size,
 };
@@ -36,7 +36,7 @@ pub fn process_register_merchant(
     }
 
     let data = match maybe_data {
-        None => String::from("{}"),
+        None => String::from(DEFAULT_DATA),
         Some(value) => value,
     };
     let account_size = get_merchant_account_size(&data);
