@@ -1,4 +1,4 @@
-use crate::engine::common::subscribe_checks;
+use crate::engine::common::{subscribe_checks, get_hashed_seed};
 use crate::engine::constants::DEFAULT_DATA;
 use crate::error::PaymentProcessorError;
 use crate::state::{Serdes, SubscriptionAccount, SubscriptionStatus};
@@ -49,13 +49,16 @@ pub fn process_subscribe(
         Some(value) => value,
     };
     let account_size = get_subscription_account_size(&name, &data);
+    // the seed to use while creating the account should be a hash of the
+    // merchant pubkey + subscription package name so that we we are guaranteed
+    // a deterministic account address for each subscription
     // Creating subscription account on chain...
     invoke(
         &system_instruction::create_account_with_seed(
             signer_info.key,
             subscription_info.key,
             signer_info.key,
-            &name,
+            &get_hashed_seed(&merchant_info.key, &package.name),
             Rent::default().minimum_balance(account_size),
             account_size as u64,
             program_id,
