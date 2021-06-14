@@ -6,6 +6,8 @@ use solana_program::{
     account_info::AccountInfo, msg, program_error::ProgramError, program_pack::IsInitialized,
     pubkey::Pubkey,
 };
+use std::io::Cursor;
+use murmur3::murmur3_32;
 
 pub fn subscribe_checks(
     program_id: &Pubkey,
@@ -75,4 +77,21 @@ pub fn subscribe_checks(
         Some(value) => value,
     };
     Ok((order_account, package))
+}
+
+/// Get hashed of a string
+///
+/// We are using murmur3 as the hashing algorithm as we don't need a
+/// cryptographically secure hashing algorithm.  We mostly need something fast
+/// with reasonably low chances of collisions
+pub fn hash(input: &str) -> String {
+    let hash_result = murmur3_32(&mut Cursor::new(input), 0).unwrap();
+    format!("{}", hash_result)
+}
+
+/// Get a hashed seed phrase
+///
+/// Basically hashes a base public key concatenated with an input string
+pub fn get_hashed_seed(base: &Pubkey, input: &str) -> String {
+    hash(&format!("{}:{}", base.to_string(), input))
 }
