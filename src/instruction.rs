@@ -487,7 +487,8 @@ mod test {
         secret: &String,
         data: Option<String>,
         merchant_result: &mut MerchantResult,
-    ) -> (Pubkey, Pubkey, Keypair) {
+        mint_keypair: &Keypair,
+    ) -> (Pubkey, Pubkey) {
         let program_id = merchant_result.0;
         let merchant_account_pubkey = merchant_result.1;
         let mut banks_client = &mut merchant_result.2;
@@ -495,7 +496,6 @@ mod test {
         let recent_blockhash = merchant_result.4;
 
         // next create token account for test
-        let mint_keypair = Keypair::new();
         let buyer_token_keypair = Keypair::new();
 
         // create and initialize mint
@@ -540,7 +540,7 @@ mod test {
         )
         .await;
 
-        (order_acc, seller_account, mint_keypair)
+        (order_acc, seller_account)
     }
 
     async fn run_merchant_tests(result: MerchantResult) -> MerchantAccount {
@@ -758,12 +758,14 @@ mod test {
         let secret = String::from("hunter2");
         let mut merchant_result =
             create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
-        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) = create_order(
+        let mint_keypair = Keypair::new();
+        let (order_acc_pubkey, seller_account_pubkey) = create_order(
             amount,
             &order_id,
             &secret,
             Option::None,
             &mut merchant_result,
+            &mint_keypair,
         )
         .await;
 
@@ -794,12 +796,14 @@ mod test {
             Some(String::from(r#"{"foo": "bar"}"#)),
         )
         .await;
-        let (order_acc_pubkey, seller_account_pubkey, mint_keypair) = create_order(
+        let mint_keypair = Keypair::new();
+        let (order_acc_pubkey, seller_account_pubkey) = create_order(
             amount,
             &order_id,
             &secret,
             Some(String::from(r#"{"a": "b"}"#)),
             &mut merchant_result,
+            &mint_keypair,
         )
         .await;
         run_checkout_tests(
@@ -823,12 +827,14 @@ mod test {
         let amount: u64 = 1234567890;
         let order_id = String::from("PD17CUSZ75");
         let secret = String::from("i love oov");
-        let (order_acc_pubkey, _seller_account_pubkey, mint_keypair) = create_order(
+        let mint_keypair = Keypair::new();
+        let (order_acc_pubkey, _seller_account_pubkey) = create_order(
             amount,
             &order_id,
             &secret,
             Option::None,
             &mut merchant_result,
+            &mint_keypair,
         )
         .await;
         let program_id = merchant_result.0;
@@ -917,6 +923,7 @@ mod test {
         subscription_name: &str,
         package_name: &str,
         merchant_data: &str,
+        mint_keypair: &Keypair,
     ) -> (
         Result<(), TransportError>,
         Option<(SubscriptionAccount, MerchantResult)>,
@@ -945,12 +952,13 @@ mod test {
 
         let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
 
-        let (order_acc_pubkey, _seller_account_pubkey, _mint_keypair) = create_order(
+        let (order_acc_pubkey, _seller_account_pubkey) = create_order(
             amount,
             &String::from(package_name),
             &String::from(""),
             Some(order_data),
             &mut merchant_result,
+            &mint_keypair,
         )
         .await;
 
@@ -1012,9 +1020,10 @@ mod test {
 
     #[tokio::test]
     async fn test_subscribe() {
-        let packages = r#"{"packages":[{"name":"basic","price":1000000,"duration":720},{"name":"annual","price":11000000,"duration":262800}]}"#;
+        let mint_keypair = Keypair::new();
+        let packages = format!(r#"{{"packages":[{{"name":"basic","price":1000000,"duration":720,"mint":"{mint}"}},{{"name":"annual","price":11000000,"duration":262800,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
         assert!(
-            (run_subscribe_tests(1000000, "cable subscription", "basic", packages).await)
+            (run_subscribe_tests(1000000, "cable subscription", "basic", &packages, &mint_keypair).await)
                 .0
                 .is_ok()
         );
@@ -1023,9 +1032,10 @@ mod test {
     #[tokio::test]
     /// test what happens when there are 0 packages
     async fn test_subscribe_no_packages() {
+        let mint_keypair = Keypair::new();
         let packages = r#"{"packages":[]}"#;
         assert!(
-            (run_subscribe_tests(1337, "cable subscription", "basic", packages).await)
+            (run_subscribe_tests(1337, "cable subscription", "basic", packages, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1034,9 +1044,10 @@ mod test {
     #[tokio::test]
     /// test what happens when there are duplicate packages
     async fn test_subscribe_duplicate_packages() {
-        let packages = r#"{"packages":[{"name":"a","price":100,"duration":720},{"name":"a","price":222,"duration":262800}]}"#;
+        let mint_keypair = Keypair::new();
+        let packages = format!(r#"{{"packages":[{{"name":"a","price":100,"duration":720,"mint":"{mint}"}},{{"name":"a","price":222,"duration":262800,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
 
-        let result = run_subscribe_tests(100, "cable subscription", "a", packages).await;
+        let result = run_subscribe_tests(100, "cable subscription", "a", &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
 
         let _ = match result.1 {
@@ -1057,9 +1068,10 @@ mod test {
     #[tokio::test]
     /// test what happens when the package is not found
     async fn test_subscribe_package_not_found() {
-        let packages = r#"{"packages":[{"name":"a","price":100,"duration":720}]}"#;
+        let mint_keypair = Keypair::new();
+        let packages = format!(r#"{{"packages":[{{"name":"a","price":100,"duration":720,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
         assert!(
-            (run_subscribe_tests(100, "cable subscription", "zz", packages).await)
+            (run_subscribe_tests(100, "cable subscription", "zz", &packages, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1068,7 +1080,8 @@ mod test {
     #[tokio::test]
     /// test what happens when there is no packages object in the JSON
     async fn test_subscribe_no_packages_json() {
-        assert!((run_subscribe_tests(250, "sub", "package", r#"{}"#).await)
+        let mint_keypair = Keypair::new();
+        assert!((run_subscribe_tests(250, "sub", "package", r#"{}"#, &mint_keypair).await)
             .0
             .is_err());
     }
@@ -1076,8 +1089,9 @@ mod test {
     #[tokio::test]
     /// test what happens when there is no valid JSON
     async fn test_subscribe_no_json() {
+        let mint_keypair = Keypair::new();
         assert!(
-            (run_subscribe_tests(250, "sub", "package", "what is?").await)
+            (run_subscribe_tests(250, "sub", "package", "what is?", &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1086,9 +1100,10 @@ mod test {
     #[tokio::test]
     /// test what happens when the amount paid is insufficient
     async fn test_subscribe_not_enough_paid() {
-        let packages = r#"{"packages":[{"name":"basic","price":100,"duration":720}]}"#;
+        let mint_keypair = Keypair::new();
+        let packages = format!(r#"{{"packages":[{{"name":"basic","price":100,"duration":720,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
         assert!(
-            (run_subscribe_tests(10, "Netflix", "basic", packages).await)
+            (run_subscribe_tests(10, "Netflix", "basic", &packages, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1096,10 +1111,11 @@ mod test {
 
     #[tokio::test]
     async fn test_subscription_renewal() {
+        let mint_keypair = Keypair::new();
         // create a package that lasts only 1 second
-        let packages = r#"{"packages":[{"name":"short","price":999999,"duration":1}]}"#;
+        let packages = format!(r#"{{"packages":[{{"name":"short","price":999999,"duration":1,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
         // create the subscription
-        let result = run_subscribe_tests(1000000, "demo", "short", packages).await;
+        let result = run_subscribe_tests(1000000, "demo", "short", &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
         let _ = match subscribe_result {
@@ -1118,12 +1134,13 @@ mod test {
 
                 let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
 
-                let (order_acc_pubkey, _seller_account_pubkey, _mint_keypair) = create_order(
+                let (order_acc_pubkey, _seller_account_pubkey) = create_order(
                     999999 * 600,
                     &String::from("short:1"),
                     &String::from(""),
                     Some(order_data),
                     &mut subscribe_result.1,
+                    &mint_keypair,
                 )
                 .await;
 
