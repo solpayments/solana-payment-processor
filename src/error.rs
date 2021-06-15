@@ -49,6 +49,9 @@ pub enum PaymentProcessorError {
     /// The Provided Sponsor Is Wrong
     #[error("Error: The Provided Sponsor Is Wrong")]
     WrongSponsor,
+    /// The Provided mint Is Wrong
+    #[error("Error: The Provided mint Is Wrong")]
+    WrongMint,
 }
 
 impl From<PaymentProcessorError> for ProgramError {
