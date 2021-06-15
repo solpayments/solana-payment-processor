@@ -74,6 +74,11 @@ pub fn process_subscribe(
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
     let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
 
+    // get the trial period duration
+    let trial_duration: i64 = match package.trial {
+        None => 0,
+        Some(value) => value
+    };
     // get the subscription account
     // TODO: ensure this account is not already initialized
     let mut subscription_data = subscription_info.try_borrow_mut_data()?;
@@ -85,7 +90,7 @@ pub fn process_subscribe(
         name,
         joined: *timestamp,
         period_start: *timestamp,
-        period_end: *timestamp + package.duration,
+        period_end: *timestamp + trial_duration + package.duration,
         data,
     };
     subscription.pack(&mut subscription_data);
