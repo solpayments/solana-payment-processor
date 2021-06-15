@@ -76,10 +76,13 @@ pub fn subscribe_checks(
         None => return Err(PaymentProcessorError::InvalidSubscriptionPackage.into()),
         Some(value) => value,
     };
+    if package.mint != Pubkey::new_from_array(order_account.mint).to_string() {
+        return Err(PaymentProcessorError::WrongMint.into());
+    }
     Ok((order_account, package))
 }
 
-/// Get hashed of a string
+/// Get hash of a string
 ///
 /// We are using murmur3 as the hashing algorithm as we don't need a
 /// cryptographically secure hashing algorithm.  We mostly need something fast
