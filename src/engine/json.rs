@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 /// Subscription package
 pub struct Package {
     pub name: String,
+    /// duration of the trial period in seconds
+    pub trial: Option<i64>,
     /// duration of the subscription in seconds
     pub duration: i64,
     /// the price in full for this subscription option
