@@ -10,6 +10,8 @@ pub struct Package {
     /// e.g. if the duration is 1 hour (3600) then the price is per hour
     /// e.g. if the duration is 1 month (3600 * 24 * 30) then the price is per month
     pub price: u64,
+    /// the mint (currency) used for this package
+    pub mint: String,
 }
 
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
