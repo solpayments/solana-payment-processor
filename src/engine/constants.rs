@@ -2,6 +2,8 @@
 pub const MERCHANT: &str = "merchant";
 /// the word trial as a string
 pub const TRIAL: &str = "trial";
+/// the word packages as a string
+pub const PACKAGES: &str = "packages";
 /// seed for pgram derived addresses
 pub const PDA_SEED: &[u8] = b"sol_payment_processor";
 /// the program owner
