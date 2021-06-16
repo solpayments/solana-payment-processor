@@ -1,19 +1,20 @@
 use crate::{
-    engine::constants::{PDA_SEED},
+    engine::common::{get_subscription_package, verify_subscription_order},
+    engine::constants::{PACKAGES, PDA_SEED, TRIAL},
     error::PaymentProcessorError,
-    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
+    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount},
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     clock::Clock,
     entrypoint::ProgramResult,
-    program::{invoke_signed},
     msg,
+    program::invoke_signed,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
-    sysvar::{Sysvar},
+    sysvar::Sysvar,
 };
 use spl_token::{self, state::Account as TokenAccount};
 
@@ -81,6 +82,32 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     // ensure order is not already paid out
     if order_account.status != OrderStatus::Paid as u8 {
         return Err(PaymentProcessorError::AlreadyWithdrawn.into());
+    }
+    // check if this is for a subscription payment that has a trial period
+    if merchant_account.data.contains(PACKAGES) && merchant_account.data.contains(TRIAL) {
+        let subscription_info = next_account_info(account_info_iter)?;
+        // ensure subscription account is owned by this program
+        if *subscription_info.owner != *program_id {
+            msg!("Error: Wrong owner for subscription account");
+            return Err(ProgramError::IncorrectProgramId);
+        }
+        // ensure this order is for this subscription
+        verify_subscription_order(subscription_info, &order_account)?;
+        // get the subscription account
+        let subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
+        if !subscription_account.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        let package = get_subscription_package(&subscription_account.name, &merchant_account)?;
+        // get the trial period duration
+        let trial_duration: i64 = match package.trial {
+            None => 0,
+            Some(value) => value,
+        };
+        // don't allow withdrawal if still within trial period
+        if *timestamp < (subscription_account.joined + trial_duration) {
+            return Err(PaymentProcessorError::CantWithdrawDuringTrial.into());
+        }
     }
     // Transferring payment to the merchant...
     invoke_signed(
