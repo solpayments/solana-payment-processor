@@ -10,6 +10,12 @@ use thiserror::Error;
 
 #[derive(Clone, Debug, Eq, Error, PartialEq, FromPrimitive)]
 pub enum PaymentProcessorError {
+    /// The Amount Is Already Withdrawn
+    #[error("Error: The Amount Is Already Withdrawn")]
+    AlreadyWithdrawn,
+    /// The Amount Is Already Withdrawn
+    #[error("Error: Cannot withdraw during trial period")]
+    CantWithdrawDuringTrial,
     /// Invalid instruction
     #[error("Error: Invalid Instruction")]
     InvalidInstruction,
@@ -19,15 +25,12 @@ pub enum PaymentProcessorError {
     /// Invalid Subscription Package
     #[error("Error: Invalid Subscription Package")]
     InvalidSubscriptionPackage,
-    /// Seller And Buyer Mints Not The Same
-    #[error("Error: Seller And Buyer Mints Not The Same")]
-    MintNotEqual,
-    /// The Amount Is Already Withdrawn
-    #[error("Error: The Amount Is Already Withdrawn")]
-    AlreadyWithdrawn,
     /// The Order Account Is Invalid
     #[error("Error: The Order Account Is Invalid")]
     InvalidOrder,
+    /// Seller And Buyer Mints Not The Same
+    #[error("Error: Seller And Buyer Mints Not The Same")]
+    MintNotEqual,
     /// The Payment Has Not Been Received In Full
     #[error("Error: The Payment Has Not Been Received In Full")]
     NotFullyPaid,
