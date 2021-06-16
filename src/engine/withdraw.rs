@@ -9,6 +9,7 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     program::{invoke_signed},
+    msg,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
@@ -35,13 +36,16 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     }
     // ensure merchant and order accounts are owned by this program
     if *merchant_info.owner != *program_id {
+        msg!("Error: Wrong owner for merchant account");
         return Err(ProgramError::IncorrectProgramId);
     }
     if *order_info.owner != *program_id {
+        msg!("Error: Wrong owner for order account");
         return Err(ProgramError::IncorrectProgramId);
     }
     // ensure buyer token account is owned by token program
     if *merchant_token_info.owner != spl_token::id() {
+        msg!("Error: Token account must be owned by token program");
         return Err(ProgramError::IncorrectProgramId);
     }
     // check that provided pda is correct
