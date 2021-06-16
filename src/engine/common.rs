@@ -60,6 +60,7 @@ pub fn subscribe_checks(
         return Err(ProgramError::InvalidAccountData);
     }
     // ensure the merchant has a subscription by this name
+    // TODO: using split looks janky.  Is it necessary?
     let name_vec: Vec<&str> = subscription_name.split(":").collect();
     let package_name = name_vec[1];
     let merchant_json_data: Result<Packages, JSONError> =
