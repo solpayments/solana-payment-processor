@@ -196,19 +196,26 @@ pub fn withdraw(
     order_payment_token: Pubkey,
     merchant_token: Pubkey,
     pda: Pubkey,
+    subscription: Option<Pubkey>,
 ) -> Instruction {
+    let mut account_metas = vec![
+        AccountMeta::new(signer, true),
+        AccountMeta::new(order, false),
+        AccountMeta::new_readonly(merchant, false),
+        AccountMeta::new(order_payment_token, false),
+        AccountMeta::new(merchant_token, false),
+        AccountMeta::new_readonly(pda, false),
+        AccountMeta::new_readonly(spl_token::id(), false),
+        AccountMeta::new_readonly(sysvar::clock::id(), false),
+    ];
+
+    if let Some(subscription) = subscription {
+        account_metas.push(AccountMeta::new_readonly(subscription, false));
+    }
+
     Instruction {
         program_id,
-        accounts: vec![
-            AccountMeta::new(signer, true),
-            AccountMeta::new(order, false),
-            AccountMeta::new_readonly(merchant, false),
-            AccountMeta::new(order_payment_token, false),
-            AccountMeta::new(merchant_token, false),
-            AccountMeta::new_readonly(pda, false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(sysvar::clock::id(), false),
-        ],
+        accounts: account_metas,
         data: PaymentProcessorInstruction::Withdraw.try_to_vec().unwrap(),
     }
 }
@@ -429,7 +436,6 @@ mod test {
         payer: &Keypair,
         recent_blockhash: Hash,
     ) -> (Pubkey, Pubkey) {
-
         let order_acc_keypair = Keypair::new();
 
         let (pda, _bump_seed) = Pubkey::find_program_address(&[PDA_SEED], &program_id);
@@ -877,6 +883,7 @@ mod test {
                 order_payment_token_acc_pubkey,
                 merchant_token_keypair.pubkey(),
                 pda,
+                Option::None,
             )],
             Some(&payer.pubkey()),
         );
@@ -926,7 +933,7 @@ mod test {
         mint_keypair: &Keypair,
     ) -> (
         Result<(), TransportError>,
-        Option<(SubscriptionAccount, MerchantResult)>,
+        Option<(SubscriptionAccount, MerchantResult, Pubkey)>,
     ) {
         let name = format!("{}:{}", subscription_name, package_name);
         let cloned_name = name.clone();
@@ -1012,7 +1019,10 @@ mod test {
             );
             assert_eq!(String::from("{}"), subscription_data.data);
 
-            return (result, Some((subscription_data, merchant_result)));
+            return (
+                result,
+                Some((subscription_data, merchant_result, order_acc_pubkey)),
+            );
         }
 
         (result, Option::None)
@@ -1021,12 +1031,20 @@ mod test {
     #[tokio::test]
     async fn test_subscribe() {
         let mint_keypair = Keypair::new();
-        let packages = format!(r#"{{"packages":[{{"name":"basic","price":1000000,"duration":720,"mint":"{mint}"}},{{"name":"annual","price":11000000,"duration":262800,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
-        assert!(
-            (run_subscribe_tests(1000000, "cable subscription", "basic", &packages, &mint_keypair).await)
-                .0
-                .is_ok()
+        let packages = format!(
+            r#"{{"packages":[{{"name":"basic","price":1000000,"duration":720,"mint":"{mint}"}},{{"name":"annual","price":11000000,"duration":262800,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string()
         );
+        assert!((run_subscribe_tests(
+            1000000,
+            "cable subscription",
+            "basic",
+            &packages,
+            &mint_keypair
+        )
+        .await)
+            .0
+            .is_ok());
     }
 
     #[tokio::test]
@@ -1034,20 +1052,29 @@ mod test {
     async fn test_subscribe_no_packages() {
         let mint_keypair = Keypair::new();
         let packages = r#"{"packages":[]}"#;
-        assert!(
-            (run_subscribe_tests(1337, "cable subscription", "basic", packages, &mint_keypair).await)
-                .0
-                .is_err()
-        );
+        assert!((run_subscribe_tests(
+            1337,
+            "cable subscription",
+            "basic",
+            packages,
+            &mint_keypair
+        )
+        .await)
+            .0
+            .is_err());
     }
 
     #[tokio::test]
     /// test what happens when there are duplicate packages
     async fn test_subscribe_duplicate_packages() {
         let mint_keypair = Keypair::new();
-        let packages = format!(r#"{{"packages":[{{"name":"a","price":100,"duration":720,"mint":"{mint}"}},{{"name":"a","price":222,"duration":262800,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
+        let packages = format!(
+            r#"{{"packages":[{{"name":"a","price":100,"duration":720,"mint":"{mint}"}},{{"name":"a","price":222,"duration":262800,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string()
+        );
 
-        let result = run_subscribe_tests(100, "cable subscription", "a", &packages, &mint_keypair).await;
+        let result =
+            run_subscribe_tests(100, "cable subscription", "a", &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
 
         let _ = match result.1 {
@@ -1069,7 +1096,10 @@ mod test {
     /// test what happens when the package is not found
     async fn test_subscribe_package_not_found() {
         let mint_keypair = Keypair::new();
-        let packages = format!(r#"{{"packages":[{{"name":"a","price":100,"duration":720,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
+        let packages = format!(
+            r#"{{"packages":[{{"name":"a","price":100,"duration":720,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string()
+        );
         assert!(
             (run_subscribe_tests(100, "cable subscription", "zz", &packages, &mint_keypair).await)
                 .0
@@ -1081,9 +1111,11 @@ mod test {
     /// test what happens when there is no packages object in the JSON
     async fn test_subscribe_no_packages_json() {
         let mint_keypair = Keypair::new();
-        assert!((run_subscribe_tests(250, "sub", "package", r#"{}"#, &mint_keypair).await)
-            .0
-            .is_err());
+        assert!(
+            (run_subscribe_tests(250, "sub", "package", r#"{}"#, &mint_keypair).await)
+                .0
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -1101,7 +1133,10 @@ mod test {
     /// test what happens when the amount paid is insufficient
     async fn test_subscribe_not_enough_paid() {
         let mint_keypair = Keypair::new();
-        let packages = format!(r#"{{"packages":[{{"name":"basic","price":100,"duration":720,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
+        let packages = format!(
+            r#"{{"packages":[{{"name":"basic","price":100,"duration":720,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string()
+        );
         assert!(
             (run_subscribe_tests(10, "Netflix", "basic", &packages, &mint_keypair).await)
                 .0
@@ -1113,7 +1148,10 @@ mod test {
     async fn test_subscription_renewal() {
         let mint_keypair = Keypair::new();
         // create a package that lasts only 1 second
-        let packages = format!(r#"{{"packages":[{{"name":"short","price":999999,"duration":1,"mint":"{mint}"}}]}}"#, mint=mint_keypair.pubkey().to_string());
+        let packages = format!(
+            r#"{{"packages":[{{"name":"short","price":999999,"duration":1,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string()
+        );
         // create the subscription
         let result = run_subscribe_tests(1000000, "demo", "short", &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
@@ -1179,6 +1217,172 @@ mod test {
                     subscription_account.period_end + 600,
                     subscription_account2.period_end
                 );
+
+                return ();
+            }
+        };
+    }
+
+    #[tokio::test]
+    async fn test_withdraw_during_trial() {
+        let mint_keypair = Keypair::new();
+        // create a package that has a short trial period
+        let packages = format!(
+            r#"{{"packages":[{{"name":"try1st","price":99,"trial":0,"duration":604800,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string()
+        );
+        // create the subscription
+        let result =
+            run_subscribe_tests(1000000, "demo1", "try1st", &packages, &mint_keypair).await;
+        assert!(result.0.is_ok());
+        let subscribe_result = result.1;
+        let _ = match subscribe_result {
+            None => (),
+            Some(mut subscribe_result) => {
+                let subscription = Pubkey::create_with_seed(
+                    &subscribe_result.1 .3.pubkey(), // payer
+                    &get_hashed_seed(
+                        &subscribe_result.1 .1, // the merchant pubkey
+                        "try1st",               // the package name
+                    ),
+                    &subscribe_result.1 .0, // program_id
+                )
+                .unwrap();
+
+                let order_acc_pubkey = subscribe_result.2;
+                let merchant_token_keypair = Keypair::new();
+                let (pda, _bump_seed) =
+                    Pubkey::find_program_address(&[PDA_SEED], &subscribe_result.1 .0);
+
+                // create and initialize merchant token account
+                assert_matches!(
+                    subscribe_result
+                        .1
+                         .2
+                        .process_transaction(create_token_account_transaction(
+                            &subscribe_result.1 .3,
+                            &mint_keypair,
+                            subscribe_result.1 .4, // recent_blockhash
+                            &merchant_token_keypair,
+                            &subscribe_result.1 .3.pubkey(), // payer,
+                            0,
+                        ))
+                        .await,
+                    Ok(())
+                );
+                let (order_payment_token_acc_pubkey, _bump_seed) = Pubkey::find_program_address(
+                    &[
+                        &order_acc_pubkey.to_bytes(),
+                        &spl_token::id().to_bytes(),
+                        &mint_keypair.pubkey().to_bytes(),
+                    ],
+                    &subscribe_result.1 .0, // program_id
+                );
+
+                // call withdraw ix
+                let mut transaction = Transaction::new_with_payer(
+                    &[withdraw(
+                        subscribe_result.1 .0,          // program_id
+                        subscribe_result.1 .3.pubkey(), // payer,
+                        order_acc_pubkey,
+                        subscribe_result.1 .1, // the merchant pubkey
+                        order_payment_token_acc_pubkey,
+                        merchant_token_keypair.pubkey(),
+                        pda,
+                        Some(subscription),
+                    )],
+                    Some(&subscribe_result.1 .3.pubkey()),
+                );
+                transaction.sign(&[&subscribe_result.1 .3], subscribe_result.1 .4);
+                assert!(subscribe_result
+                    .1
+                     .2
+                    .process_transaction(transaction)
+                    .await
+                    .is_ok());
+
+                return ();
+            }
+        };
+    }
+
+    #[tokio::test]
+    async fn test_cannot_withdraw_during_trial() {
+        let mint_keypair = Keypair::new();
+        // create a package that has a week long trial period
+        let packages = format!(
+            r#"{{"packages":[{{"name":"try1st","price":99,"trial":604800,"duration":604800,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string()
+        );
+        // create the subscription
+        let result =
+            run_subscribe_tests(1000000, "demo2", "try1st", &packages, &mint_keypair).await;
+        assert!(result.0.is_ok());
+        let subscribe_result = result.1;
+        let _ = match subscribe_result {
+            None => (),
+            Some(mut subscribe_result) => {
+                let subscription = Pubkey::create_with_seed(
+                    &subscribe_result.1 .3.pubkey(), // payer
+                    &get_hashed_seed(
+                        &subscribe_result.1 .1, // the merchant pubkey
+                        "try1st",               // the package name
+                    ),
+                    &subscribe_result.1 .0, // program_id
+                )
+                .unwrap();
+
+                let order_acc_pubkey = subscribe_result.2;
+                let merchant_token_keypair = Keypair::new();
+                let (pda, _bump_seed) =
+                    Pubkey::find_program_address(&[PDA_SEED], &subscribe_result.1 .0);
+
+                // create and initialize merchant token account
+                assert_matches!(
+                    subscribe_result
+                        .1
+                         .2
+                        .process_transaction(create_token_account_transaction(
+                            &subscribe_result.1 .3,
+                            &mint_keypair,
+                            subscribe_result.1 .4, // recent_blockhash
+                            &merchant_token_keypair,
+                            &subscribe_result.1 .3.pubkey(), // payer,
+                            0,
+                        ))
+                        .await,
+                    Ok(())
+                );
+                let (order_payment_token_acc_pubkey, _bump_seed) = Pubkey::find_program_address(
+                    &[
+                        &order_acc_pubkey.to_bytes(),
+                        &spl_token::id().to_bytes(),
+                        &mint_keypair.pubkey().to_bytes(),
+                    ],
+                    &subscribe_result.1 .0, // program_id
+                );
+
+                // call withdraw ix
+                let mut transaction = Transaction::new_with_payer(
+                    &[withdraw(
+                        subscribe_result.1 .0,          // program_id
+                        subscribe_result.1 .3.pubkey(), // payer,
+                        order_acc_pubkey,
+                        subscribe_result.1 .1, // the merchant pubkey
+                        order_payment_token_acc_pubkey,
+                        merchant_token_keypair.pubkey(),
+                        pda,
+                        Some(subscription),
+                    )],
+                    Some(&subscribe_result.1 .3.pubkey()),
+                );
+                transaction.sign(&[&subscribe_result.1 .3], subscribe_result.1 .4);
+                assert!(subscribe_result
+                    .1
+                     .2
+                    .process_transaction(transaction)
+                    .await
+                    .is_err());
 
                 return ();
             }
