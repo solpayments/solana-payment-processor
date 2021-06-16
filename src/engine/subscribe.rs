@@ -50,7 +50,7 @@ pub fn process_subscribe(
     };
     let account_size = get_subscription_account_size(&name, &data);
     // the seed to use while creating the account should be a hash of the
-    // merchant pubkey + subscription package name so that we we are guaranteed
+    // merchant pubkey + subscription package name so that we are guaranteed
     // a deterministic account address for each subscription
     // Creating subscription account on chain...
     invoke(
