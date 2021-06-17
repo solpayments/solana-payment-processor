@@ -110,6 +110,19 @@ pub enum PaymentProcessorInstruction {
         #[allow(dead_code)] // not dead code..
         quantity: i64,
     },
+    /// Cancel a subscription
+    ///
+    /// Accounts expected:
+    ///
+    /// 0. `[signer]` The account of the person initializing the transaction
+    /// 1. `[writable]` The subscription account.  Owned by this program
+    /// 2. `[]` The merchant account.  Owned by this program
+    /// 3. `[writable]` The order account.  Owned by this program
+    /// 4. `[writable]` The order token account - this is where the amount was paid into. Owned by this program
+    /// 5. `[writable]` The refund token account - this is where the refund will go
+    /// 6. `[]` This program's derived address
+    /// 7. `[]` The token program
+    CancelSubscription,
 }
 
 /// Creates an 'RegisterMerchant' instruction.
@@ -266,6 +279,35 @@ pub fn renew_subscription(
             AccountMeta::new_readonly(sysvar::clock::id(), false),
         ],
         data: PaymentProcessorInstruction::RenewSubscription { quantity }
+            .try_to_vec()
+            .unwrap(),
+    }
+}
+
+/// creates a 'CancelSubscription' instruction
+pub fn cancel_subscription(
+    program_id: Pubkey,
+    signer: Pubkey,
+    subscription: Pubkey,
+    merchant: Pubkey,
+    order: Pubkey,
+    order_token: Pubkey,
+    refund_token: Pubkey,
+    pda: Pubkey,
+) -> Instruction {
+    Instruction {
+        program_id,
+        accounts: vec![
+            AccountMeta::new(signer, true),
+            AccountMeta::new(subscription, false),
+            AccountMeta::new_readonly(merchant, false),
+            AccountMeta::new(order, false),
+            AccountMeta::new(order_token, false),
+            AccountMeta::new(refund_token, false),
+            AccountMeta::new_readonly(pda, false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+        ],
+        data: PaymentProcessorInstruction::CancelSubscription
             .try_to_vec()
             .unwrap(),
     }
