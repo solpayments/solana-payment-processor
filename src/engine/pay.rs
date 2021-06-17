@@ -106,6 +106,7 @@ pub fn process_express_checkout(
     // but whose address is derived from the order account
     // this is remarkably similar to spl_associated_token_account::create_associated_token_account
     // derive the token account address
+    // TODO: for subscriptions, should this use the subscription account as the base?
     let (associated_token_address, bump_seed) = Pubkey::find_program_address(
         &[
             &order_info.key.to_bytes(),
