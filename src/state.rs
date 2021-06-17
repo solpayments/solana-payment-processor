@@ -41,6 +41,7 @@ pub enum OrderStatus {
     Pending = 1,
     Paid = 2,
     Withdrawn = 3,
+    Cancelled = 4,
 }
 
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
