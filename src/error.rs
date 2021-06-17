@@ -13,7 +13,7 @@ pub enum PaymentProcessorError {
     /// The Amount Is Already Withdrawn
     #[error("Error: The Amount Is Already Withdrawn")]
     AlreadyWithdrawn,
-    /// The Amount Is Already Withdrawn
+    /// Cannot withdraw during trial period
     #[error("Error: Cannot withdraw during trial period")]
     CantWithdrawDuringTrial,
     /// Invalid instruction
