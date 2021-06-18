@@ -319,7 +319,7 @@ mod test {
         super::*,
         crate::engine::common::get_hashed_seed,
         crate::engine::constants::{
-            MERCHANT, MIN_FEE_IN_LAMPORTS, PDA_SEED, PROGRAM_OWNER, SPONSOR_FEE,
+            DEFAULT_FEE_IN_LAMPORTS,MERCHANT, MIN_FEE_IN_LAMPORTS, PDA_SEED, PROGRAM_OWNER, SPONSOR_FEE,
         },
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{
@@ -622,6 +622,7 @@ mod test {
         let result =
             create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
         let merchant_data = run_merchant_tests(result).await;
+        assert_eq!(DEFAULT_FEE_IN_LAMPORTS, merchant_data.fee);
         assert_eq!(String::from("{}"), merchant_data.data);
     }
 

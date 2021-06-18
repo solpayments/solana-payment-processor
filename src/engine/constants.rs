@@ -9,7 +9,9 @@ pub const PDA_SEED: &[u8] = b"sol_payment_processor";
 /// the program owner
 pub const PROGRAM_OWNER: &str = "mosh782eoKyPca9eotWfepHVSKavjDMBjNkNE3Gge6Z";
 /// minimum transaction fee percentage
-pub const MIN_FEE_IN_LAMPORTS: u64 = 5000;
+pub const MIN_FEE_IN_LAMPORTS: u64 = 50000;
+/// default transaction fee percentage
+pub const DEFAULT_FEE_IN_LAMPORTS: u64 = 500000;
 /// sponsor fee percentage
 pub const SPONSOR_FEE: u128 = 3;
 /// default data value
