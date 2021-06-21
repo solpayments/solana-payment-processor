@@ -7,13 +7,14 @@ publish = false
 
 [dependencies]
 arrayref = "0.3.6"
-solana-program = "=1.6.4"
+solana-program = "=1.7.1"
 thiserror = "1.0.23"
 borsh = "=0.9.0"
 serde = "1.0.126"
 serde_json = "1.0.64"
 num-traits = "0.2.14"
 num-derive = "0.3.3"
+murmur3 = "0.5.1"
 spl-token = {version = "3.0.1", features = ["no-entrypoint"]}
 spl-associated-token-account = {version = "1.0.2", features = ["no-entrypoint"]}
 
@@ -23,8 +24,8 @@ test-bpf = []
 
 [dev-dependencies]
 assert_matches = "1.4.0"
-solana-sdk = "=1.6.4"
-solana-program-test = "=1.6.4"
+solana-sdk = "=1.7.1"
+solana-program-test = "=1.7.1"
 
 [lib]
 crate-type = ["cdylib", "lib"]

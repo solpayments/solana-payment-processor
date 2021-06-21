@@ -1,11 +1,12 @@
 use crate::{
-    engine::constants::{MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER},
+    engine::constants::{DEFAULT_DATA, DEFAULT_FEE_IN_LAMPORTS, MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER},
     state::{MerchantAccount, MerchantStatus, Serdes},
     utils::get_merchant_account_size,
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -36,7 +37,7 @@ pub fn process_register_merchant(
     }
 
     let data = match maybe_data {
-        None => String::from("{}"),
+        None => String::from(DEFAULT_DATA),
         Some(value) => value,
     };
     let account_size = get_merchant_account_size(&data);
@@ -75,14 +76,15 @@ pub fn process_register_merchant(
             Err(_error) => Pubkey::from_str(PROGRAM_OWNER).unwrap().to_bytes(),
         },
         fee: match maybe_fee {
-            None => MIN_FEE_IN_LAMPORTS,
+            None => DEFAULT_FEE_IN_LAMPORTS,
             Some(value) => {
-                let mut result = MIN_FEE_IN_LAMPORTS;
-                if value > MIN_FEE_IN_LAMPORTS {
-                    result = value;
+                let mut result = value;
+                if result < MIN_FEE_IN_LAMPORTS {
+                    msg!("Info: setting minimum transaction fee of {:?}", MIN_FEE_IN_LAMPORTS);
+                    result = MIN_FEE_IN_LAMPORTS;
                 }
                 result
-            },
+            }
         },
         data,
     };

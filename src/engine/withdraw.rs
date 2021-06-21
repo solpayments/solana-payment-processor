@@ -1,18 +1,19 @@
 use crate::{
-    engine::constants::{PDA_SEED},
+    engine::common::{get_subscription_package, verify_subscription_order},
+    engine::constants::{PACKAGES, PDA_SEED, TRIAL},
     error::PaymentProcessorError,
-    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
+    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount},
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    clock::Clock,
     entrypoint::ProgramResult,
-    program::{invoke_signed},
+    msg,
+    program::invoke_signed,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
-    sysvar::{Sysvar},
+    sysvar::{clock::Clock, Sysvar},
 };
 use spl_token::{self, state::Account as TokenAccount};
 
@@ -25,9 +26,8 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let merchant_token_info = next_account_info(account_info_iter)?;
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
-    let clock_sysvar_info = next_account_info(account_info_iter)?;
 
-    let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
+    let timestamp = Clock::get()?.unix_timestamp;
 
     // ensure signer can sign
     if !signer_info.is_signer {
@@ -35,13 +35,16 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     }
     // ensure merchant and order accounts are owned by this program
     if *merchant_info.owner != *program_id {
+        msg!("Error: Wrong owner for merchant account");
         return Err(ProgramError::IncorrectProgramId);
     }
     if *order_info.owner != *program_id {
+        msg!("Error: Wrong owner for order account");
         return Err(ProgramError::IncorrectProgramId);
     }
     // ensure buyer token account is owned by token program
     if *merchant_token_info.owner != spl_token::id() {
+        msg!("Error: Token account must be owned by token program");
         return Err(ProgramError::IncorrectProgramId);
     }
     // check that provided pda is correct
@@ -78,6 +81,32 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     if order_account.status != OrderStatus::Paid as u8 {
         return Err(PaymentProcessorError::AlreadyWithdrawn.into());
     }
+    // check if this is for a subscription payment that has a trial period
+    if merchant_account.data.contains(PACKAGES) && merchant_account.data.contains(TRIAL) {
+        let subscription_info = next_account_info(account_info_iter)?;
+        // ensure subscription account is owned by this program
+        if *subscription_info.owner != *program_id {
+            msg!("Error: Wrong owner for subscription account");
+            return Err(ProgramError::IncorrectProgramId);
+        }
+        // ensure this order is for this subscription
+        verify_subscription_order(subscription_info, &order_account)?;
+        // get the subscription account
+        let subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
+        if !subscription_account.is_initialized() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        let package = get_subscription_package(&subscription_account.name, &merchant_account)?;
+        // get the trial period duration
+        let trial_duration: i64 = match package.trial {
+            None => 0,
+            Some(value) => value,
+        };
+        // don't allow withdrawal if still within trial period
+        if timestamp < (subscription_account.joined + trial_duration) {
+            return Err(PaymentProcessorError::CantWithdrawDuringTrial.into());
+        }
+    }
     // Transferring payment to the merchant...
     invoke_signed(
         &spl_token::instruction::transfer(
@@ -100,7 +129,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
 
     // Updating order account information...
     order_account.status = OrderStatus::Withdrawn as u8;
-    order_account.modified = *timestamp;
+    order_account.modified = timestamp;
     OrderAccount::pack(&order_account, &mut order_info.data.borrow_mut());
 
     Ok(())
