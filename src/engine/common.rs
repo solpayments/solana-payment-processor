@@ -3,9 +3,17 @@ use crate::error::PaymentProcessorError;
 use crate::state::{MerchantAccount, OrderAccount, OrderStatus, Serdes};
 use murmur3::murmur3_32;
 use serde_json::Error as JSONError;
+use solana_program::program_pack::Pack;
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
-    program_pack::IsInitialized, pubkey::Pubkey,
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    msg,
+    program::{invoke, invoke_signed},
+    program_error::ProgramError,
+    program_pack::IsInitialized,
+    pubkey::Pubkey,
+    system_instruction,
+    sysvar::rent::Rent,
 };
 use std::io::Cursor;
 
@@ -51,6 +59,7 @@ pub fn get_subscription_package(
     }
 }
 
+/// run checks for subscription processing
 pub fn subscribe_checks(
     program_id: &Pubkey,
     signer_info: &AccountInfo<'_>,
@@ -115,4 +124,95 @@ pub fn hash(input: &str) -> String {
 /// Basically hashes a base public key concatenated with an input string
 pub fn get_hashed_seed(base: &Pubkey, input: &str) -> String {
     hash(&format!("{}:{}", base.to_string(), input))
+}
+
+/// Create associated token account
+///
+/// Creates an associated token account that is owned by a custom program.
+/// This is similar to spl_associated_token_account::create_associated_token_account
+/// which would fail for creating token accounts not owned by the token program
+pub fn create_program_owned_associated_token_account(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo; 8],
+    rent: &Rent,
+) -> ProgramResult {
+    let signer_info = &accounts[0];
+    let base_account_info = &accounts[1];
+    let new_account_info = &accounts[2];
+    let mint_info = &accounts[3];
+    let pda_info = &accounts[4];
+    let token_program_info = &accounts[5];
+    let system_program_info = &accounts[6];
+    let rent_sysvar_info = &accounts[7];
+
+    let (associated_token_address, bump_seed) = Pubkey::find_program_address(
+        &[
+            &base_account_info.key.to_bytes(),
+            &spl_token::id().to_bytes(),
+            &mint_info.key.to_bytes(),
+        ],
+        program_id,
+    );
+    // assert that the derived address matches the one supplied
+    if associated_token_address != *new_account_info.key {
+        msg!("Error: Associated address does not match seed derivation");
+        return Err(ProgramError::InvalidSeeds);
+    }
+    // get signer seeds
+    let associated_token_account_signer_seeds: &[&[_]] = &[
+        &base_account_info.key.to_bytes(),
+        &spl_token::id().to_bytes(),
+        &mint_info.key.to_bytes(),
+        &[bump_seed],
+    ];
+    // Fund the associated seller token account with the minimum balance to be rent exempt
+    let required_lamports = rent
+        .minimum_balance(spl_token::state::Account::LEN)
+        .max(1)
+        .saturating_sub(new_account_info.lamports());
+    if required_lamports > 0 {
+        // Transfer lamports to the associated seller token account
+        invoke(
+            &system_instruction::transfer(
+                &signer_info.key,
+                new_account_info.key,
+                required_lamports,
+            ),
+            &[
+                signer_info.clone(),
+                new_account_info.clone(),
+                system_program_info.clone(),
+            ],
+        )?;
+    }
+    // Allocate space for the associated seller token account
+    invoke_signed(
+        &system_instruction::allocate(new_account_info.key, spl_token::state::Account::LEN as u64),
+        &[new_account_info.clone(), system_program_info.clone()],
+        &[&associated_token_account_signer_seeds],
+    )?;
+    // Assign the associated seller token account to the SPL Token program
+    invoke_signed(
+        &system_instruction::assign(new_account_info.key, &spl_token::id()),
+        &[new_account_info.clone(), system_program_info.clone()],
+        &[&associated_token_account_signer_seeds],
+    )?;
+    // Initialize the associated seller token account
+    invoke(
+        &spl_token::instruction::initialize_account(
+            &spl_token::id(),
+            new_account_info.key,
+            mint_info.key,
+            pda_info.key,
+        )?,
+        &[
+            new_account_info.clone(),
+            mint_info.clone(),
+            pda_info.clone(),
+            rent_sysvar_info.clone(),
+            token_program_info.clone(),
+        ],
+    )?;
+
+    Ok(())
 }
