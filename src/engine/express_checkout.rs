@@ -1,4 +1,5 @@
 use crate::{
+    engine::common::create_program_owned_associated_token_account,
     engine::constants::{DEFAULT_DATA, PROGRAM_OWNER, SPONSOR_FEE},
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
@@ -9,7 +10,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program::{invoke, invoke_signed},
+    program::invoke,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
@@ -40,7 +41,6 @@ pub fn process_express_checkout(
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
-
     let rent_sysvar_info = next_account_info(account_info_iter)?;
 
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
@@ -103,76 +103,20 @@ pub fn process_express_checkout(
 
     // next we are going to try and create a token account owned by the program
     // but whose address is derived from the order account
-    // this is remarkably similar to spl_associated_token_account::create_associated_token_account
-    // derive the token account address
     // TODO: for subscriptions, should this use the subscription account as the base?
-    let (associated_token_address, bump_seed) = Pubkey::find_program_address(
-        &[
-            &order_info.key.to_bytes(),
-            &spl_token::id().to_bytes(),
-            &mint_info.key.to_bytes(),
-        ],
+    create_program_owned_associated_token_account(
         program_id,
-    );
-    // assert that the derived address matches the one supplied
-    if associated_token_address != *seller_token_info.key {
-        msg!("Error: Associated address does not match seed derivation");
-        return Err(ProgramError::InvalidSeeds);
-    }
-    // get signer seeds
-    let associated_token_account_signer_seeds: &[&[_]] = &[
-        &order_info.key.to_bytes(),
-        &spl_token::id().to_bytes(),
-        &mint_info.key.to_bytes(),
-        &[bump_seed],
-    ];
-    // Fund the associated seller token account with the minimum balance to be rent exempt
-    let required_lamports = rent
-        .minimum_balance(spl_token::state::Account::LEN)
-        .max(1)
-        .saturating_sub(seller_token_info.lamports());
-    if required_lamports > 0 {
-        // Transfer lamports to the associated seller token account
-        invoke(
-            &system_instruction::transfer(
-                &signer_info.key,
-                seller_token_info.key,
-                required_lamports,
-            ),
-            &[
-                signer_info.clone(),
-                seller_token_info.clone(),
-                system_program_info.clone(),
-            ],
-        )?;
-    }
-    // Allocate space for the associated seller token account
-    invoke_signed(
-        &system_instruction::allocate(seller_token_info.key, spl_token::state::Account::LEN as u64),
-        &[seller_token_info.clone(), system_program_info.clone()],
-        &[&associated_token_account_signer_seeds],
-    )?;
-    // Assign the associated seller token account to the SPL Token program
-    invoke_signed(
-        &system_instruction::assign(seller_token_info.key, &spl_token::id()),
-        &[seller_token_info.clone(), system_program_info.clone()],
-        &[&associated_token_account_signer_seeds],
-    )?;
-    // Initialize the associated seller token account
-    invoke(
-        &spl_token::instruction::initialize_account(
-            &spl_token::id(),
-            seller_token_info.key,
-            mint_info.key,
-            pda_info.key,
-        )?,
         &[
+            signer_info.clone(),
+            order_info.clone(),
             seller_token_info.clone(),
             mint_info.clone(),
             pda_info.clone(),
-            rent_sysvar_info.clone(),
             token_program_info.clone(),
+            system_program_info.clone(),
+            rent_sysvar_info.clone(),
         ],
+        rent,
     )?;
 
     // Transfer payment amount to associated seller token account...
