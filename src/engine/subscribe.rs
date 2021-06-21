@@ -1,17 +1,16 @@
-use crate::engine::common::{subscribe_checks, get_hashed_seed};
+use crate::engine::common::{get_hashed_seed, subscribe_checks};
 use crate::engine::constants::DEFAULT_DATA;
 use crate::error::PaymentProcessorError;
 use crate::state::{Serdes, SubscriptionAccount, SubscriptionStatus};
 use crate::utils::get_subscription_account_size;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    clock::Clock,
     entrypoint::ProgramResult,
     program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction,
-    sysvar::{rent::Rent, Sysvar},
+    sysvar::{clock::Clock, rent::Rent, Sysvar},
 };
 
 pub fn process_subscribe(
@@ -27,7 +26,6 @@ pub fn process_subscribe(
     let merchant_info = next_account_info(account_info_iter)?;
     let order_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
-    let clock_sysvar_info = next_account_info(account_info_iter)?;
     let rent_sysvar_info = next_account_info(account_info_iter)?;
 
     let (order_account, package) = subscribe_checks(
@@ -72,12 +70,12 @@ pub fn process_subscribe(
     )?;
 
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
-    let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
+    let timestamp = Clock::get()?.unix_timestamp;
 
     // get the trial period duration
     let trial_duration: i64 = match package.trial {
         None => 0,
-        Some(value) => value
+        Some(value) => value,
     };
     // get the subscription account
     // TODO: ensure this account is not already initialized
@@ -88,9 +86,9 @@ pub fn process_subscribe(
         owner: signer_info.key.to_bytes(),
         merchant: merchant_info.key.to_bytes(),
         name,
-        joined: *timestamp,
-        period_start: *timestamp,
-        period_end: *timestamp + trial_duration + package.duration,
+        joined: timestamp,
+        period_start: timestamp,
+        period_end: timestamp + trial_duration + package.duration,
         data,
     };
     subscription.pack(&mut subscription_data);

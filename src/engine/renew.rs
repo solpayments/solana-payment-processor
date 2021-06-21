@@ -3,13 +3,12 @@ use crate::error::PaymentProcessorError;
 use crate::state::{Serdes, SubscriptionAccount};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
-    sysvar::Sysvar,
+    sysvar::{clock::Clock, Sysvar},
 };
 
 pub fn process_renew_subscription(
@@ -23,7 +22,6 @@ pub fn process_renew_subscription(
     let subscription_info = next_account_info(account_info_iter)?;
     let merchant_info = next_account_info(account_info_iter)?;
     let order_info = next_account_info(account_info_iter)?;
-    let clock_sysvar_info = next_account_info(account_info_iter)?;
 
     // ensure subscription account is owned by this program
     if *subscription_info.owner != *program_id {
@@ -49,11 +47,11 @@ pub fn process_renew_subscription(
         return Err(PaymentProcessorError::NotFullyPaid.into());
     }
     // update subscription account
-    let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
-    if timestamp > &subscription_account.period_end {
+    let timestamp = Clock::get()?.unix_timestamp;
+    if timestamp > subscription_account.period_end {
         // had ended so we start a new period
-        subscription_account.period_start = *timestamp;
-        subscription_account.period_end = *timestamp + (package.duration * quantity);
+        subscription_account.period_start = timestamp;
+        subscription_account.period_end = timestamp + (package.duration * quantity);
     } else {
         // not yet ended so we add the time to the end of the current period
         subscription_account.period_end =

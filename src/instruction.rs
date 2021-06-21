@@ -43,8 +43,7 @@ pub enum PaymentProcessorInstruction {
     /// 8. `[]` This program's derived address
     /// 9. `[]` The token program
     /// 10. `[]` The System program
-    /// 11. `[]` The clock sysvar
-    /// 12. `[]` The rent sysvar
+    /// 11. `[]` The rent sysvar
     ExpressCheckout {
         #[allow(dead_code)] // not dead code..
         amount: u64,
@@ -74,7 +73,6 @@ pub enum PaymentProcessorInstruction {
     /// 4. `[writable]` The merchant token account (where we will withdraw to)
     /// 5. `[]` This program's derived address
     /// 6. `[]` The token program
-    /// 7. `[]` The clock sysvar
     Withdraw,
     /// Initialize a subscription
     ///
@@ -85,8 +83,7 @@ pub enum PaymentProcessorInstruction {
     /// 2. `[]` The merchant account.  Owned by this program
     /// 3. `[]` The order account.  Owned by this program
     /// 4. `[]` The System program
-    /// 5. `[]` The clock sysvar
-    /// 6. `[]` The rent sysvar
+    /// 5. `[]` The rent sysvar
     Subscribe {
         /// the subscription package name
         #[allow(dead_code)] // not dead code..
@@ -103,7 +100,6 @@ pub enum PaymentProcessorInstruction {
     /// 1. `[writable]` The subscription account.  Owned by this program
     /// 2. `[]` The merchant account.  Owned by this program
     /// 3. `[]` The order account.  Owned by this program
-    /// 4. `[]` The clock sysvar
     RenewSubscription {
         /// the number of periods to renew e.g. if the subscription period is a year
         /// you can choose to renew for 1 year, 2 years, n years, etc
@@ -186,7 +182,6 @@ pub fn express_checkout(
             AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(sysvar::clock::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
         data: PaymentProcessorInstruction::ExpressCheckout {
@@ -219,7 +214,6 @@ pub fn withdraw(
         AccountMeta::new(merchant_token, false),
         AccountMeta::new_readonly(pda, false),
         AccountMeta::new_readonly(spl_token::id(), false),
-        AccountMeta::new_readonly(sysvar::clock::id(), false),
     ];
 
     if let Some(subscription) = subscription {
@@ -251,7 +245,6 @@ pub fn subscribe(
             AccountMeta::new_readonly(merchant, false),
             AccountMeta::new_readonly(order, false),
             AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(sysvar::clock::id(), false),
             AccountMeta::new_readonly(sysvar::rent::id(), false),
         ],
         data: PaymentProcessorInstruction::Subscribe { name, data }
@@ -276,7 +269,6 @@ pub fn renew_subscription(
             AccountMeta::new(subscription, false),
             AccountMeta::new_readonly(merchant, false),
             AccountMeta::new_readonly(order, false),
-            AccountMeta::new_readonly(sysvar::clock::id(), false),
         ],
         data: PaymentProcessorInstruction::RenewSubscription { quantity }
             .try_to_vec()

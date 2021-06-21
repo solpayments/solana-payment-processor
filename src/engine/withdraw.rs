@@ -7,14 +7,13 @@ use crate::{
 use solana_program::program_pack::Pack;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program::invoke_signed,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
-    sysvar::Sysvar,
+    sysvar::{clock::Clock, Sysvar},
 };
 use spl_token::{self, state::Account as TokenAccount};
 
@@ -27,9 +26,8 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let merchant_token_info = next_account_info(account_info_iter)?;
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
-    let clock_sysvar_info = next_account_info(account_info_iter)?;
 
-    let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
+    let timestamp = Clock::get()?.unix_timestamp;
 
     // ensure signer can sign
     if !signer_info.is_signer {
@@ -105,7 +103,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
             Some(value) => value,
         };
         // don't allow withdrawal if still within trial period
-        if *timestamp < (subscription_account.joined + trial_duration) {
+        if timestamp < (subscription_account.joined + trial_duration) {
             return Err(PaymentProcessorError::CantWithdrawDuringTrial.into());
         }
     }
@@ -131,7 +129,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
 
     // Updating order account information...
     order_account.status = OrderStatus::Withdrawn as u8;
-    order_account.modified = *timestamp;
+    order_account.modified = timestamp;
     OrderAccount::pack(&order_account, &mut order_info.data.borrow_mut());
 
     Ok(())

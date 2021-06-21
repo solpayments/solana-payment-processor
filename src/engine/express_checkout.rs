@@ -7,7 +7,6 @@ use crate::{
 use solana_program::program_pack::Pack;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program::{invoke, invoke_signed},
@@ -15,7 +14,7 @@ use solana_program::{
     program_pack::IsInitialized,
     pubkey::Pubkey,
     system_instruction,
-    sysvar::{rent::Rent, Sysvar},
+    sysvar::{clock::Clock, rent::Rent, Sysvar},
 };
 use spl_token::{self, state::Account as TokenAccount};
 use std::str::FromStr;
@@ -41,11 +40,11 @@ pub fn process_express_checkout(
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
     let system_program_info = next_account_info(account_info_iter)?;
-    let clock_sysvar_info = next_account_info(account_info_iter)?;
+
     let rent_sysvar_info = next_account_info(account_info_iter)?;
 
     let rent = &Rent::from_account_info(rent_sysvar_info)?;
-    let timestamp = &Clock::from_account_info(clock_sysvar_info)?.unix_timestamp;
+    let timestamp = Clock::get()?.unix_timestamp;
 
     // ensure signer can sign
     if !signer_info.is_signer {
@@ -242,8 +241,8 @@ pub fn process_express_checkout(
     // Saving order information...
     let order = OrderAccount {
         status: OrderStatus::Paid as u8,
-        created: *timestamp,
-        modified: *timestamp,
+        created: timestamp,
+        modified: timestamp,
         merchant: merchant_info.key.to_bytes(),
         mint: mint_info.key.to_bytes(),
         token: seller_token_info.key.to_bytes(),
