@@ -1,7 +1,7 @@
 use crate::{
     engine::common::subscribe_checks,
     engine::constants::PDA_SEED,
-    state::{OrderAccount, OrderStatus, Serdes, SubscriptionAccount},
+    state::{OrderAccount, OrderStatus, Serdes, SubscriptionAccount, SubscriptionStatus},
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -15,6 +15,8 @@ use solana_program::{
 };
 use spl_token::{self};
 
+/// Cancel Subscription
+/// currently only works well for subscriptions still in the trial period
 pub fn process_cancel_subscription(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -54,7 +56,7 @@ pub fn process_cancel_subscription(program_id: &Pubkey, accounts: &[AccountInfo]
     }
 
     // get the subscription account
-    let subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
+    let mut subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
     if !subscription_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
@@ -84,7 +86,7 @@ pub fn process_cancel_subscription(program_id: &Pubkey, accounts: &[AccountInfo]
         Some(value) => value,
     };
     // don't allow cancellation if trial period ended
-    if timestamp > (subscription_account.joined + trial_duration) {
+    if timestamp >= (subscription_account.joined + trial_duration) {
         msg!("Info: Subscription amount not refunded because trial period has ended.");
     } else {
         // Transferring payment back to the payer...
@@ -106,12 +108,20 @@ pub fn process_cancel_subscription(program_id: &Pubkey, accounts: &[AccountInfo]
             ],
             &[&[&PDA_SEED, &[pda_nonce]]],
         )?;
+        // Updating order account information...
+        order_account.status = OrderStatus::Cancelled as u8;
+        order_account.modified = timestamp;
+        OrderAccount::pack(&order_account, &mut order_info.data.borrow_mut());
+        // set period end to right now
+        subscription_account.period_end = timestamp;
     }
 
-    // Updating order account information...
-    order_account.status = OrderStatus::Cancelled as u8;
-    order_account.modified = timestamp;
-    OrderAccount::pack(&order_account, &mut order_info.data.borrow_mut());
+    // Updating subscription account information...
+    subscription_account.status = SubscriptionStatus::Cancelled as u8;
+    SubscriptionAccount::pack(
+        &subscription_account,
+        &mut subscription_info.data.borrow_mut(),
+    );
 
     Ok(())
 }
