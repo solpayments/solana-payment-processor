@@ -66,6 +66,7 @@ pub struct OrderAccount {
 pub enum SubscriptionStatus {
     Uninitialized = 0,
     Initialized = 1,
+    Cancelled = 2,
 }
 
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
