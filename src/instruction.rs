@@ -319,7 +319,8 @@ mod test {
         super::*,
         crate::engine::common::get_hashed_seed,
         crate::engine::constants::{
-            DEFAULT_FEE_IN_LAMPORTS,MERCHANT, MIN_FEE_IN_LAMPORTS, PDA_SEED, PROGRAM_OWNER, SPONSOR_FEE,
+            DEFAULT_FEE_IN_LAMPORTS, MERCHANT, MIN_FEE_IN_LAMPORTS, PDA_SEED, PROGRAM_OWNER,
+            SPONSOR_FEE,
         },
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{
@@ -1245,7 +1246,7 @@ mod test {
                     Ok(())
                 );
 
-                // assert that period end has been updates
+                // assert that period end has been updated
                 let subscription_account2 = subscribe_result.1 .2.get_account(subscription).await;
                 let subscription_account2 = match subscription_account2 {
                     Ok(data) => match data {
@@ -1268,7 +1269,7 @@ mod test {
         };
     }
 
-    async fn run_subscribe_withdrawal_tests(
+    async fn run_subscription_withdrawal_tests(
         name: &str,
         packages: &str,
         mint_keypair: &Keypair,
@@ -1369,7 +1370,7 @@ mod test {
             name = name
         );
         // withdraw goes okay
-        run_subscribe_withdrawal_tests(name, &packages, &mint_keypair, false).await;
+        run_subscription_withdrawal_tests(name, &packages, &mint_keypair, false).await;
     }
 
     #[tokio::test]
@@ -1383,6 +1384,239 @@ mod test {
             name = name
         );
         // withdrawal errors out as you cant withdraw during trial
-        run_subscribe_withdrawal_tests(name, &packages, &mint_keypair, true).await;
+        run_subscription_withdrawal_tests(name, &packages, &mint_keypair, true).await;
+    }
+
+    async fn run_subscription_cancel_tests(
+        name: &str,
+        packages: &str,
+        mint_keypair: &Keypair,
+    ) -> Option<(
+        SubscriptionAccount,
+        OrderAccount,
+        spl_token::state::Account,
+        spl_token::state::Account,
+        SubscriptionAccount,
+    )> {
+        // create the subscription
+        let result = run_subscribe_tests(1000000, "demo1", name, &packages, &mint_keypair).await;
+        assert!(result.0.is_ok());
+        let subscribe_result = result.1;
+        match subscribe_result {
+            None => Option::None,
+            Some(mut subscribe_result) => {
+                let subscription = Pubkey::create_with_seed(
+                    &subscribe_result.1 .3.pubkey(), // payer
+                    &get_hashed_seed(
+                        &subscribe_result.1 .1, // the merchant pubkey
+                        name,                   // the package name
+                    ),
+                    &subscribe_result.1 .0, // program_id
+                )
+                .unwrap();
+
+                let previous_subscription_account =
+                    subscribe_result.1 .2.get_account(subscription).await;
+                let previous_subscription_account = match previous_subscription_account {
+                    Ok(data) => match data {
+                        None => panic!("Oo"),
+                        Some(value) => match SubscriptionAccount::unpack(&value.data) {
+                            Ok(data) => data,
+                            Err(error) => panic!("Problem: {:?}", error),
+                        },
+                    },
+                    Err(error) => panic!("Problem: {:?}", error),
+                };
+
+                let order_acc_pubkey = subscribe_result.2;
+                let refund_token_acc_keypair = Keypair::new();
+                let (pda, _bump_seed) =
+                    Pubkey::find_program_address(&[PDA_SEED], &subscribe_result.1 .0);
+
+                // create and initialize refund token account
+                assert_matches!(
+                    subscribe_result
+                        .1
+                         .2
+                        .process_transaction(create_token_account_transaction(
+                            &subscribe_result.1 .3,
+                            &mint_keypair,
+                            subscribe_result.1 .4, // recent_blockhash
+                            &refund_token_acc_keypair,
+                            &subscribe_result.1 .3.pubkey(), // payer,
+                            0,
+                        ))
+                        .await,
+                    Ok(())
+                );
+                let (order_token_acc_pubkey, _bump_seed) = Pubkey::find_program_address(
+                    &[
+                        &order_acc_pubkey.to_bytes(),
+                        &spl_token::id().to_bytes(),
+                        &mint_keypair.pubkey().to_bytes(),
+                    ],
+                    &subscribe_result.1 .0, // program_id
+                );
+
+                // call cancel ix
+                let mut transaction = Transaction::new_with_payer(
+                    &[cancel_subscription(
+                        subscribe_result.1 .0,          // program_id
+                        subscribe_result.1 .3.pubkey(), // payer,
+                        subscription,
+                        subscribe_result.1 .1, // the merchant pubkey
+                        order_acc_pubkey,
+                        order_token_acc_pubkey,
+                        refund_token_acc_keypair.pubkey(),
+                        pda,
+                    )],
+                    Some(&subscribe_result.1 .3.pubkey()),
+                );
+                transaction.sign(&[&subscribe_result.1 .3], subscribe_result.1 .4);
+
+                let _cancel_result = subscribe_result.1 .2.process_transaction(transaction).await;
+
+                let subscription_account = subscribe_result.1 .2.get_account(subscription).await;
+                let subscription_account = match subscription_account {
+                    Ok(data) => match data {
+                        None => panic!("Oo"),
+                        Some(value) => match SubscriptionAccount::unpack(&value.data) {
+                            Ok(data) => data,
+                            Err(error) => panic!("Problem: {:?}", error),
+                        },
+                    },
+                    Err(error) => panic!("Problem: {:?}", error),
+                };
+                let order_account = subscribe_result.1 .2.get_account(order_acc_pubkey).await;
+                let order_account = match order_account {
+                    Ok(data) => match data {
+                        None => panic!("Oo"),
+                        Some(value) => match OrderAccount::unpack(&value.data) {
+                            Ok(data) => data,
+                            Err(error) => panic!("Problem: {:?}", error),
+                        },
+                    },
+                    Err(error) => panic!("Problem: {:?}", error),
+                };
+                let order_token_account = subscribe_result
+                    .1
+                     .2
+                    .get_account(order_token_acc_pubkey)
+                    .await;
+                let order_token_account = match order_token_account {
+                    Ok(data) => match data {
+                        None => panic!("Oo"),
+                        Some(value) => match TokenAccount::unpack(&value.data) {
+                            Ok(data) => data,
+                            Err(error) => panic!("Problem: {:?}", error),
+                        },
+                    },
+                    Err(error) => panic!("Problem: {:?}", error),
+                };
+                let refund_token_account = subscribe_result
+                    .1
+                     .2
+                    .get_account(refund_token_acc_keypair.pubkey())
+                    .await;
+                let refund_token_account = match refund_token_account {
+                    Ok(data) => match data {
+                        None => panic!("Oo"),
+                        Some(value) => match TokenAccount::unpack(&value.data) {
+                            Ok(data) => data,
+                            Err(error) => panic!("Problem: {:?}", error),
+                        },
+                    },
+                    Err(error) => panic!("Problem: {:?}", error),
+                };
+
+                Some((
+                    subscription_account,
+                    order_account,
+                    order_token_account,
+                    refund_token_account,
+                    previous_subscription_account,
+                ))
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cancel_subscription_during_trial() {
+        let mint_keypair = Keypair::new();
+        let name = "trialFirst";
+        // create a package that has a short trial period
+        let packages = format!(
+            r#"{{"packages":[{{"name":"{name}","price":99,"trial":604800,"duration":604800,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string(),
+            name = name
+        );
+        // withdraw goes okay
+        let result = run_subscription_cancel_tests(name, &packages, &mint_keypair)
+            .await
+            .unwrap();
+        let (
+            subscription_account,
+            order_account,
+            order_token_account,
+            refund_token_account,
+            previous_subscription_account,
+        ) = result;
+        // subscription was canceled
+        assert_eq!(
+            SubscriptionStatus::Initialized as u8,
+            previous_subscription_account.status
+        );
+        assert_eq!(
+            SubscriptionStatus::Cancelled as u8,
+            subscription_account.status
+        );
+        // period end has changed to an earlier time
+        assert!(previous_subscription_account.period_end > subscription_account.period_end);
+        // order account was cancelled
+        assert_eq!(OrderStatus::Cancelled as u8, order_account.status);
+        assert_eq!(0, order_token_account.amount);
+        // amount was withdrawn
+        assert_eq!(order_account.paid_amount, refund_token_account.amount);
+    }
+
+    #[tokio::test]
+    async fn test_cancel_subscription_after_trial() {
+        let mint_keypair = Keypair::new();
+        let name = "trialFirst";
+        // create a package that has a short trial period
+        let packages = format!(
+            r#"{{"packages":[{{"name":"{name}","price":99,"trial":0,"duration":604800,"mint":"{mint}"}}]}}"#,
+            mint = mint_keypair.pubkey().to_string(),
+            name = name
+        );
+        // withdraw goes okay
+        let result = run_subscription_cancel_tests(name, &packages, &mint_keypair)
+            .await
+            .unwrap();
+        let (
+            subscription_account,
+            order_account,
+            order_token_account,
+            refund_token_account,
+            previous_subscription_account,
+        ) = result;
+        // subscription was canceled
+        assert_eq!(
+            SubscriptionStatus::Initialized as u8,
+            previous_subscription_account.status
+        );
+        assert_eq!(
+            SubscriptionStatus::Cancelled as u8,
+            subscription_account.status
+        );
+        assert_eq!(
+            previous_subscription_account.period_end,
+            subscription_account.period_end
+        );
+        // order account was not changed
+        assert_eq!(OrderStatus::Paid as u8, order_account.status);
+        assert_eq!(order_account.paid_amount, order_token_account.amount);
+        // nothing was refunded
+        assert_eq!(0, refund_token_account.amount);
     }
 }
