@@ -1,22 +1,27 @@
-use crate::engine::pay::utils::{process_order, CheckoutType};
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
+use crate::engine::pay::utils::process_order;
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    pubkey::Pubkey,
+    sysvar::{clock::Clock, Sysvar},
+};
+use std::collections::BTreeMap;
 
 pub fn process_chain_checkout(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     amount: u64,
-    order_id: String,
-    secret: String,
+    order_items: BTreeMap<&str, u64>,
     maybe_data: Option<String>,
 ) -> ProgramResult {
     process_order(
         program_id,
         accounts,
         amount,
-        order_id,
-        secret,
+        format!("{timestamp}", timestamp = Clock::get()?.unix_timestamp),
+        "".to_string(),
         maybe_data,
-        CheckoutType::Chain,
+        Some(order_items),
     )?;
     Ok(())
 }
