@@ -1,4 +1,4 @@
-use crate::engine::pay::utils::{process_order, CheckoutType};
+use crate::engine::pay::utils::process_order;
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
 
 pub fn process_express_checkout(
@@ -16,7 +16,7 @@ pub fn process_express_checkout(
         order_id,
         secret,
         maybe_data,
-        CheckoutType::Express,
+        Option::None,
     )?;
     Ok(())
 }
