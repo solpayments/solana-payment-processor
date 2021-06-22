@@ -19,6 +19,9 @@ pub enum PaymentProcessorError {
     /// Invalid instruction
     #[error("Error: Invalid Instruction")]
     InvalidInstruction,
+    /// Invalid Merchant Data
+    #[error("Error: Invalid Merchant Data")]
+    InvalidMerchantData,
     /// Invalid Subscription Data
     #[error("Error: Invalid Subscription Data")]
     InvalidSubscriptionData,
@@ -28,6 +31,9 @@ pub enum PaymentProcessorError {
     /// The Order Account Is Invalid
     #[error("Error: The Order Account Is Invalid")]
     InvalidOrder,
+    /// The Order Data Is Invalid
+    #[error("Error: The Order Data Is Invalid")]
+    InvalidOrderData,
     /// Seller And Buyer Mints Not The Same
     #[error("Error: Seller And Buyer Mints Not The Same")]
     MintNotEqual,
