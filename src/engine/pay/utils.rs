@@ -1,22 +1,20 @@
 use crate::{
     engine::{
         common::create_program_owned_associated_token_account,
-        constants::{DEFAULT_DATA, PROGRAM_OWNER, SPONSOR_FEE},
-        json::{OrderSubscription, Package, Packages},
+        constants::{DEFAULT_DATA, INITIAL, PAID, PROGRAM_OWNER, SPONSOR_FEE},
+        json::Item,
     },
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
     utils::{get_amounts, get_order_account_size},
 };
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use murmur3::murmur3_32;
-use serde_json::Error as JSONError;
+use serde_json::{json, Error as JSONError, Value};
 use solana_program::program_pack::Pack;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program::{invoke, invoke_signed},
+    program::invoke,
     program_error::ProgramError,
     program_pack::IsInitialized,
     pubkey::Pubkey,
@@ -24,15 +22,10 @@ use solana_program::{
     sysvar::{clock::Clock, rent::Rent, Sysvar},
 };
 use spl_token::{self, state::Account as TokenAccount};
-use std::io::Cursor;
+use std::collections::BTreeMap;
 use std::str::FromStr;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
-pub enum CheckoutType {
-    Express = 0,
-    Chain = 1,
-}
-
+/// Run checks for order processing
 pub fn order_checks(
     program_id: &Pubkey,
     signer_info: &AccountInfo<'_>,
@@ -78,6 +71,59 @@ pub fn order_checks(
     Ok(merchant_account)
 }
 
+/// Verify chain checkout
+///
+/// Mainly ensure that the item(s) being paid for match the item(s) in the
+/// merchant account and that the amount being paid is sufficient.
+///
+/// order_items is an object that looks like so:
+/// {
+///     id: quantity
+/// }
+/// e.g. {"item1", 1, "item2": 33}
+pub fn chain_checkout_checks(
+    merchant_account: &MerchantAccount,
+    mint: &AccountInfo,
+    order_items: &BTreeMap<&str, u64>,
+    amount: u64,
+) -> ProgramResult {
+    let merchant_json_data: Result<BTreeMap<&str, Item>, JSONError> =
+        serde_json::from_str(&merchant_account.data);
+    let registered_items = match merchant_json_data {
+        Err(_error) => return Err(PaymentProcessorError::InvalidMerchantData.into()),
+        Ok(data) => data,
+    };
+
+    let mut total_amount: u64 = 0;
+
+    for (key, quantity) in order_items.iter() {
+        let registered_item = match registered_items.get(key) {
+            None => {
+                msg!("Error: Invalid order item {:?}", key);
+                return Err(PaymentProcessorError::InvalidOrderData.into());
+            }
+            Some(value) => value,
+        };
+        if registered_item.mint != mint.key.to_string() {
+            msg!(
+                "Error: Mint {:?} invalid for this order",
+                mint.key.to_string()
+            );
+            return Err(PaymentProcessorError::WrongMint.into());
+        }
+
+        total_amount = total_amount + (registered_item.price * quantity);
+    }
+
+    if total_amount > amount {
+        msg!("Error: Insufficient amount, should be {:?}", total_amount);
+        return Err(ProgramError::InsufficientFunds);
+    }
+
+    Ok(())
+}
+
+/// process an order payment
 pub fn process_order(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -85,7 +131,7 @@ pub fn process_order(
     order_id: String,
     secret: String,
     maybe_data: Option<String>,
-    checkout_type: CheckoutType,
+    checkout_items: Option<BTreeMap<&str, u64>>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -115,11 +161,34 @@ pub fn process_order(
         sponsor_info,
     )?;
 
-    // create order account
-    let data = match maybe_data {
+    // get data
+    let mut data = match maybe_data {
         None => String::from(DEFAULT_DATA),
         Some(value) => value,
     };
+
+    // process chain checkout
+    if checkout_items.is_some() {
+        let order_items = checkout_items.unwrap();
+        chain_checkout_checks(&merchant_account, &mint_info.clone(), &order_items, amount)?;
+        if data == String::from(DEFAULT_DATA) {
+            data = json!({ PAID: order_items }).to_string();
+        } else {
+            // let possible_json_data: Result<BTreeMap<&str, Value>, JSONError> = serde_json::from_str(&data);
+            // let json_data = match possible_json_data {
+            let json_data: Value = match serde_json::from_str(&data) {
+                Err(_error) => return Err(PaymentProcessorError::InvalidOrderData.into()),
+                Ok(data) => data,
+            };
+            data = json!({
+                INITIAL: json_data,
+                PAID: order_items
+            })
+            .to_string();
+        }
+    }
+
+    // create order account
     let order_account_size = get_order_account_size(&order_id, &secret, &data);
     // the order account amount includes the fee in SOL
     let order_account_amount = Rent::default().minimum_balance(order_account_size);
