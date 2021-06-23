@@ -557,100 +557,18 @@ mod test {
         (order_acc_keypair, seller_token, pda, merchant_data)
     }
 
-    async fn create_order_account_express_checkout(
-        order_id: &String,
-        amount: u64,
-        secret: &String,
-        data: Option<String>,
-        program_id: &Pubkey,
-        merchant: &Pubkey,
-        buyer_token: &Pubkey,
-        mint: &Pubkey,
-        banks_client: &mut BanksClient,
-        payer: &Keypair,
-        recent_blockhash: Hash,
-    ) -> (Pubkey, Pubkey) {
-        let (order_acc_keypair, seller_token, pda, merchant_data) =
-            prepare_order(program_id, merchant, mint, banks_client).await;
-
-        // call express checkout ix
-        let mut transaction = Transaction::new_with_payer(
-            &[express_checkout(
-                *program_id,
-                payer.pubkey(),
-                order_acc_keypair.pubkey(),
-                *merchant,
-                seller_token,
-                *buyer_token,
-                *mint,
-                Pubkey::from_str(PROGRAM_OWNER).unwrap(),
-                Pubkey::new_from_array(merchant_data.sponsor),
-                pda,
-                amount,
-                (&order_id).to_string(),
-                (&secret).to_string(),
-                data,
-            )],
-            Some(&payer.pubkey()),
-        );
-        transaction.sign(&[payer, &order_acc_keypair], recent_blockhash);
-        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-
-        (order_acc_keypair.pubkey(), seller_token)
-    }
-
-    async fn create_order_account_chain_checkout(
-        amount: u64,
-        order_items: &BTreeMap<String, u64>,
-        data: Option<String>,
-        program_id: &Pubkey,
-        merchant: &Pubkey,
-        buyer_token: &Pubkey,
-        mint: &Pubkey,
-        banks_client: &mut BanksClient,
-        payer: &Keypair,
-        recent_blockhash: Hash,
-    ) -> (Pubkey, Pubkey) {
-        let (order_acc_keypair, seller_token, pda, merchant_data) =
-            prepare_order(program_id, merchant, mint, banks_client).await;
-        let order_items = order_items.clone();
-
-        // call chain checkout ix
-        let mut transaction = Transaction::new_with_payer(
-            &[chain_checkout(
-                *program_id,
-                payer.pubkey(),
-                order_acc_keypair.pubkey(),
-                *merchant,
-                seller_token,
-                *buyer_token,
-                *mint,
-                Pubkey::from_str(PROGRAM_OWNER).unwrap(),
-                Pubkey::new_from_array(merchant_data.sponsor),
-                pda,
-                amount,
-                order_items,
-                data,
-            )],
-            Some(&payer.pubkey()),
-        );
-        transaction.sign(&[payer, &order_acc_keypair], recent_blockhash);
-        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-
-        (order_acc_keypair.pubkey(), seller_token)
-    }
-
-    async fn create_mint_account(
+    async fn create_token_account(
         amount: u64,
         mint_keypair: &Keypair,
-        merchant_result: &mut MerchantResult
-    ) {
+        merchant_result: &mut MerchantResult,
+    ) -> Keypair {
         // next create token account for test
         let buyer_token_keypair = Keypair::new();
 
         // create and initialize mint
         assert_matches!(
-            merchant_result.2
+            merchant_result
+                .2
                 .process_transaction(create_mint_transaction(
                     &merchant_result.3,
                     &mint_keypair,
@@ -662,7 +580,8 @@ mod test {
         );
         // create and initialize buyer token account
         assert_matches!(
-            merchant_result.2
+            merchant_result
+                .2
                 .process_transaction(create_token_account_transaction(
                     &merchant_result.3,
                     &mint_keypair,
@@ -674,6 +593,8 @@ mod test {
                 .await,
             Ok(())
         );
+
+        buyer_token_keypair
     }
 
     async fn create_order_express_checkout(
@@ -684,25 +605,34 @@ mod test {
         merchant_result: &mut MerchantResult,
         mint_keypair: &Keypair,
     ) -> (Pubkey, Pubkey) {
-        let buyer_token_keypair = Keypair::new();
-        create_mint_account(amount, mint_keypair, merchant_result).await;
+        let buyer_token_keypair = create_token_account(amount, mint_keypair, merchant_result).await;
+        let (order_acc_keypair, seller_token, pda, merchant_data) =
+            prepare_order(&merchant_result.0, &merchant_result.1, &mint_keypair.pubkey(), &mut merchant_result.2).await;
 
-        let (order_acc, seller_account) = create_order_account_express_checkout(
-            &order_id,
-            amount,
-            &secret,
-            data,
-            &merchant_result.0, //program_id,
-            &merchant_result.1, //merchant_account_pubkey,
-            &buyer_token_keypair.pubkey(),
-            &mint_keypair.pubkey(),
-            &mut merchant_result.2, // banks client
-            &merchant_result.3,  // payer
-            merchant_result.4,
-        )
-        .await;
+        // call express checkout ix
+        let mut transaction = Transaction::new_with_payer(
+            &[express_checkout(
+                merchant_result.0,
+                merchant_result.3.pubkey(),
+                order_acc_keypair.pubkey(),
+                merchant_result.1,
+                seller_token,
+                buyer_token_keypair.pubkey(),
+                mint_keypair.pubkey(),
+                Pubkey::from_str(PROGRAM_OWNER).unwrap(),
+                Pubkey::new_from_array(merchant_data.sponsor),
+                pda,
+                amount,
+                (&order_id).to_string(),
+                (&secret).to_string(),
+                data,
+            )],
+            Some(&merchant_result.3.pubkey()),
+        );
+        transaction.sign(&[&merchant_result.3, &order_acc_keypair], merchant_result.4);
+        assert_matches!(&mut merchant_result.2.process_transaction(transaction).await, Ok(()));
 
-        (order_acc, seller_account)
+        (order_acc_keypair.pubkey(), seller_token)
     }
 
     async fn create_order_chain_checkout(
@@ -712,24 +642,42 @@ mod test {
         merchant_result: &mut MerchantResult,
         mint_keypair: &Keypair,
     ) -> (Pubkey, Pubkey) {
-        let buyer_token_keypair = Keypair::new();
-        create_mint_account(amount, mint_keypair, merchant_result).await;
-
-        let (order_acc, seller_account) = create_order_account_chain_checkout(
-            amount,
-            order_items,
-            data,
-            &merchant_result.0, //program_id,
-            &merchant_result.1, //merchant_account_pubkey,
-            &buyer_token_keypair.pubkey(),
+        let buyer_token_keypair = create_token_account(amount, mint_keypair, merchant_result).await;
+        let (order_acc_keypair, seller_token, pda, merchant_data) = prepare_order(
+            &merchant_result.0,
+            &merchant_result.1,
             &mint_keypair.pubkey(),
-            &mut merchant_result.2, // banks client
-            &merchant_result.3,  // payer
-            merchant_result.4,
+            &mut merchant_result.2,
         )
         .await;
+        let order_items = order_items.clone();
 
-        (order_acc, seller_account)
+        // call chain checkout ix
+        let mut transaction = Transaction::new_with_payer(
+            &[chain_checkout(
+                merchant_result.0,
+                merchant_result.3.pubkey(),
+                order_acc_keypair.pubkey(),
+                merchant_result.1,
+                seller_token,
+                buyer_token_keypair.pubkey(),
+                mint_keypair.pubkey(),
+                Pubkey::from_str(PROGRAM_OWNER).unwrap(),
+                Pubkey::new_from_array(merchant_data.sponsor),
+                pda,
+                amount,
+                order_items,
+                data,
+            )],
+            Some(&merchant_result.3.pubkey()),
+        );
+        transaction.sign(&[&merchant_result.3, &order_acc_keypair], merchant_result.4);
+        assert_matches!(
+            &mut merchant_result.2.process_transaction(transaction).await,
+            Ok(())
+        );
+
+        (order_acc_keypair.pubkey(), seller_token)
     }
 
     // async fn run_merchant_tests(result: MerchantResult) -> MerchantAccount {
@@ -825,8 +773,6 @@ mod test {
         // merchant_account_pubkey => merchant_result.1;
         // banks_client => merchant_result.2;
         // payer => merchant_result.3;
-
-        let mut merchant_result = merchant_result;
 
         let order_account = merchant_result.2.get_account(*order_acc_pubkey).await;
         let order_account = match order_account {
@@ -925,33 +871,33 @@ mod test {
         order_data
     }
 
-    // async fn run_checkout_tests(
-    //     amount: u64,
-    //     order_id: String,
-    //     secret: String,
-    //     data: Option<String>,
-    //     merchant_result: MerchantResult,
-    //     order_acc_pubkey: &Pubkey,
-    //     seller_account_pubkey: &Pubkey,
-    //     mint_keypair: &Keypair,
-    // ) {
-    //     let order_data = run_common_checkout_tests(
-    //         amount,
-    //         merchant_result,
-    //         order_acc_pubkey,
-    //         seller_account_pubkey,
-    //         mint_keypair,
-    //     )
-    //     .await;
+    async fn run_checkout_tests(
+        amount: u64,
+        order_id: String,
+        secret: String,
+        data: Option<String>,
+        merchant_result: &mut MerchantResult,
+        order_acc_pubkey: &Pubkey,
+        seller_account_pubkey: &Pubkey,
+        mint_keypair: &Keypair,
+    ) {
+        let order_data = run_common_checkout_tests(
+            amount,
+            merchant_result,
+            order_acc_pubkey,
+            seller_account_pubkey,
+            mint_keypair,
+        )
+        .await;
 
-    //     let data_string = match data {
-    //         None => String::from("{}"),
-    //         Some(value) => value,
-    //     };
-    //     assert_eq!(order_id, order_data.order_id);
-    //     assert_eq!(secret, order_data.secret);
-    //     assert_eq!(data_string, order_data.data);
-    // }
+        let data_string = match data {
+            None => String::from("{}"),
+            Some(value) => value,
+        };
+        assert_eq!(order_id, order_data.order_id);
+        assert_eq!(secret, order_data.secret);
+        assert_eq!(data_string, order_data.data);
+    }
 
     async fn run_chain_checkout_tests(
         amount: u64,
@@ -1036,36 +982,36 @@ mod test {
         .await;
     }
 
-    // #[tokio::test]
-    // async fn test_express_checkout() {
-    //     let amount: u64 = 2000000000;
-    //     let order_id = String::from("1337");
-    //     let secret = String::from("hunter2");
-    //     let mut merchant_result =
-    //         create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
-    //     let mint_keypair = Keypair::new();
-    //     let (order_acc_pubkey, seller_account_pubkey) = create_order_express_checkout(
-    //         amount,
-    //         &order_id,
-    //         &secret,
-    //         Option::None,
-    //         &mut merchant_result,
-    //         &mint_keypair,
-    //     )
-    //     .await;
+    #[tokio::test]
+    async fn test_express_checkout() {
+        let amount: u64 = 2000000000;
+        let order_id = String::from("1337");
+        let secret = String::from("hunter2");
+        let mut merchant_result =
+            create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
+        let mint_keypair = Keypair::new();
+        let (order_acc_pubkey, seller_account_pubkey) = create_order_express_checkout(
+            amount,
+            &order_id,
+            &secret,
+            Option::None,
+            &mut merchant_result,
+            &mint_keypair,
+        )
+        .await;
 
-    //     run_checkout_tests(
-    //         amount,
-    //         order_id,
-    //         secret,
-    //         Option::None,
-    //         merchant_result,
-    //         &order_acc_pubkey,
-    //         &seller_account_pubkey,
-    //         &mint_keypair,
-    //     )
-    //     .await;
-    // }
+        run_checkout_tests(
+            amount,
+            order_id,
+            secret,
+            Option::None,
+            &mut merchant_result,
+            &order_acc_pubkey,
+            &seller_account_pubkey,
+            &mint_keypair,
+        )
+        .await;
+    }
 
     // #[tokio::test]
     // /// test checkout with all merchant options
