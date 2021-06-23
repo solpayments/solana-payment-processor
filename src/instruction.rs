@@ -379,6 +379,7 @@ mod test {
             DEFAULT_FEE_IN_LAMPORTS, INITIAL, MERCHANT, MIN_FEE_IN_LAMPORTS, PAID, PDA_SEED,
             PROGRAM_OWNER, SPONSOR_FEE,
         },
+        crate::error::PaymentProcessorError,
         crate::instruction::PaymentProcessorInstruction,
         crate::state::{
             MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
@@ -395,8 +396,9 @@ mod test {
         },
         solana_program_test::*,
         solana_sdk::{
+            instruction::InstructionError,
             signature::{Keypair, Signer},
-            transaction::Transaction,
+            transaction::{Transaction, TransactionError},
             transport::TransportError,
         },
         spl_token::{
@@ -606,8 +608,13 @@ mod test {
         mint_keypair: &Keypair,
     ) -> (Pubkey, Pubkey) {
         let buyer_token_keypair = create_token_account(amount, mint_keypair, merchant_result).await;
-        let (order_acc_keypair, seller_token, pda, merchant_data) =
-            prepare_order(&merchant_result.0, &merchant_result.1, &mint_keypair.pubkey(), &mut merchant_result.2).await;
+        let (order_acc_keypair, seller_token, pda, merchant_data) = prepare_order(
+            &merchant_result.0,
+            &merchant_result.1,
+            &mint_keypair.pubkey(),
+            &mut merchant_result.2,
+        )
+        .await;
 
         // call express checkout ix
         let mut transaction = Transaction::new_with_payer(
@@ -630,18 +637,21 @@ mod test {
             Some(&merchant_result.3.pubkey()),
         );
         transaction.sign(&[&merchant_result.3, &order_acc_keypair], merchant_result.4);
-        assert_matches!(&mut merchant_result.2.process_transaction(transaction).await, Ok(()));
+        assert_matches!(
+            &mut merchant_result.2.process_transaction(transaction).await,
+            Ok(())
+        );
 
         (order_acc_keypair.pubkey(), seller_token)
     }
 
-    async fn create_order_chain_checkout(
+    async fn create_chain_checkout_transaction(
         amount: u64,
         order_items: &BTreeMap<String, u64>,
         data: Option<String>,
         merchant_result: &mut MerchantResult,
         mint_keypair: &Keypair,
-    ) -> (Pubkey, Pubkey) {
+    ) -> Result<(Pubkey, Pubkey), TransportError> {
         let buyer_token_keypair = create_token_account(amount, mint_keypair, merchant_result).await;
         let (order_acc_keypair, seller_token, pda, merchant_data) = prepare_order(
             &merchant_result.0,
@@ -672,12 +682,28 @@ mod test {
             Some(&merchant_result.3.pubkey()),
         );
         transaction.sign(&[&merchant_result.3, &order_acc_keypair], merchant_result.4);
-        assert_matches!(
-            &mut merchant_result.2.process_transaction(transaction).await,
-            Ok(())
-        );
+        let _result = merchant_result.2.process_transaction(transaction).await?;
+        Ok((order_acc_keypair.pubkey(), seller_token))
+    }
 
-        (order_acc_keypair.pubkey(), seller_token)
+    async fn create_order_chain_checkout(
+        amount: u64,
+        order_items: &BTreeMap<String, u64>,
+        data: Option<String>,
+        merchant_result: &mut MerchantResult,
+        mint_keypair: &Keypair,
+    ) -> (Pubkey, Pubkey) {
+        let transaction = create_chain_checkout_transaction(
+            amount,
+            order_items,
+            data,
+            merchant_result,
+            mint_keypair,
+        )
+        .await;
+
+        assert!(transaction.is_ok());
+        transaction.unwrap()
     }
 
     async fn run_merchant_tests(result: MerchantResult) -> MerchantAccount {
@@ -980,6 +1006,132 @@ mod test {
             &mint_keypair,
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn test_chain_checkout_with_data() {
+        let mint_keypair = Keypair::new();
+        let amount: u64 = 2000000000;
+
+        let mut order_items: BTreeMap<String, u64> = BTreeMap::new();
+        order_items.insert("1".to_string(), 1);
+
+        let merchant_data = format!(
+            r#"{{
+            "1": {{"price": 2000000, "mint": "{mint_key}"}},
+            "2": {{"price": 3000000, "mint": "{mint_key}"}}
+        }}"#,
+            mint_key = mint_keypair.pubkey()
+        );
+
+        let mut merchant_result = create_merchant_account(
+            Some("chain2".to_string()),
+            Option::None,
+            Option::None,
+            Some(merchant_data),
+        )
+        .await;
+        let (order_acc_pubkey, seller_account_pubkey) = create_order_chain_checkout(
+            amount,
+            &order_items,
+            Some(String::from(r#"{"foo": "bar"}"#)),
+            &mut merchant_result,
+            &mint_keypair,
+        )
+        .await;
+
+        run_chain_checkout_tests(
+            amount,
+            &order_items,
+            Some(String::from(r#"{"foo": "bar"}"#)),
+            &mut merchant_result,
+            &order_acc_pubkey,
+            &seller_account_pubkey,
+            &mint_keypair,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_chain_checkout_insufficient_amount() {
+        let mint_keypair = Keypair::new();
+        let amount: u64 = 20;
+
+        let mut order_items: BTreeMap<String, u64> = BTreeMap::new();
+        order_items.insert("1".to_string(), 1);
+
+        let merchant_data = format!(
+            r#"{{"1": {{"price": 2000000, "mint": "{mint_key}"}}}}"#,
+            mint_key = mint_keypair.pubkey()
+        );
+
+        let mut merchant_result = create_merchant_account(
+            Some("chain2".to_string()),
+            Option::None,
+            Option::None,
+            Some(merchant_data),
+        )
+        .await;
+
+        match create_chain_checkout_transaction(
+            amount,
+            &order_items,
+            Option::None,
+            &mut merchant_result,
+            &mint_keypair,
+        )
+        .await
+        {
+            Err(error) => {
+                assert_eq!(
+                    error.unwrap(),
+                    TransactionError::InstructionError(0, InstructionError::InsufficientFunds)
+                );
+            }
+            Ok(_value) => panic!("Oo... we expect an error"),
+        };
+    }
+
+    #[tokio::test]
+    async fn test_chain_checkout_invalid_order_items() {
+        let mint_keypair = Keypair::new();
+        let amount: u64 = 2000000000;
+
+        let mut order_items: BTreeMap<String, u64> = BTreeMap::new();
+        order_items.insert("invalid".to_string(), 1);
+
+        let merchant_data = format!(
+            r#"{{"1": {{"price": 2000000, "mint": "{mint_key}"}}}}"#,
+            mint_key = mint_keypair.pubkey()
+        );
+        let mut merchant_result = create_merchant_account(
+            Some("chain2".to_string()),
+            Option::None,
+            Option::None,
+            Some(merchant_data),
+        )
+        .await;
+
+        match create_chain_checkout_transaction(
+            amount,
+            &order_items,
+            Option::None,
+            &mut merchant_result,
+            &mint_keypair,
+        )
+        .await
+        {
+            Err(error) => {
+                assert_eq!(
+                    error.unwrap(),
+                    TransactionError::InstructionError(
+                        0,
+                        InstructionError::Custom(PaymentProcessorError::InvalidOrderData as u32)
+                    )
+                );
+            }
+            Ok(_value) => panic!("Oo... we expect an error"),
+        };
     }
 
     #[tokio::test]
