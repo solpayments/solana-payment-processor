@@ -1,6 +1,6 @@
 use crate::{
     engine::cancel_subscription::process_cancel_subscription,
-    engine::pay::express::process_express_checkout, engine::register::process_register_merchant,
+    engine::pay::express::process_express_checkout, engine::pay::chain::process_chain_checkout, engine::register::process_register_merchant,
     engine::renew::process_renew_subscription, engine::subscribe::process_subscribe,
     engine::withdraw::process_withdraw_payment, instruction::PaymentProcessorInstruction,
 };
@@ -32,6 +32,14 @@ impl PaymentProcessorInstruction {
             } => {
                 msg!("SolPayments: ExpressCheckout");
                 process_express_checkout(program_id, accounts, amount, order_id, secret, data)
+            }
+            PaymentProcessorInstruction::ChainCheckout {
+                amount,
+                order_items,
+                data,
+            } => {
+                msg!("SolPayments: ChainCheckout");
+                process_chain_checkout(program_id, accounts, amount, order_items, data)
             }
             PaymentProcessorInstruction::Withdraw => {
                 msg!("SolPayments: Withdraw");
