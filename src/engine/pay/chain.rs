@@ -11,7 +11,7 @@ pub fn process_chain_checkout(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     amount: u64,
-    order_items: BTreeMap<&str, u64>,
+    order_items: BTreeMap<String, u64>,
     maybe_data: Option<String>,
 ) -> ProgramResult {
     process_order(

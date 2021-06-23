@@ -84,11 +84,12 @@ pub fn order_checks(
 pub fn chain_checkout_checks(
     merchant_account: &MerchantAccount,
     mint: &AccountInfo,
-    order_items: &BTreeMap<&str, u64>,
+    order_items: &BTreeMap<String, u64>,
     amount: u64,
 ) -> ProgramResult {
-    let merchant_json_data: Result<BTreeMap<&str, Item>, JSONError> =
+    let merchant_json_data: Result<BTreeMap<String, Item>, JSONError> =
         serde_json::from_str(&merchant_account.data);
+
     let registered_items = match merchant_json_data {
         Err(_error) => return Err(PaymentProcessorError::InvalidMerchantData.into()),
         Ok(data) => data,
@@ -131,7 +132,7 @@ pub fn process_order(
     order_id: String,
     secret: String,
     maybe_data: Option<String>,
-    checkout_items: Option<BTreeMap<&str, u64>>,
+    checkout_items: Option<BTreeMap<String, u64>>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
