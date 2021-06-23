@@ -51,6 +51,7 @@ pub fn order_checks(
     }
     // ensure buyer token account is owned by token program
     if *buyer_token_info.owner != spl_token::id() {
+        msg!("Error: Buyer token account not owned by Token Program");
         return Err(ProgramError::IncorrectProgramId);
     }
     // Get mint details and verify that they match token account
