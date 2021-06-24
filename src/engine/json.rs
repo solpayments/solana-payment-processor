@@ -27,3 +27,13 @@ pub struct Packages {
 pub struct OrderSubscription {
     pub subscription: String,
 }
+
+#[derive(Serialize, Debug, Deserialize, PartialEq)]
+/// Item
+///
+/// Represents an ...item for which a payment can be made
+pub struct Item {
+    pub price: u64,
+    /// the mint (currency) used for this package
+    pub mint: String,
+}

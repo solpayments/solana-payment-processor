@@ -4,6 +4,10 @@ pub const MERCHANT: &str = "merchant";
 pub const TRIAL: &str = "trial";
 /// the word packages as a string
 pub const PACKAGES: &str = "packages";
+/// the word packages as a string
+pub const PAID: &str = "_paid";
+/// the word packages as a string
+pub const INITIAL: &str = "_initial";
 /// seed for pgram derived addresses
 pub const PDA_SEED: &[u8] = b"sol_payment_processor";
 /// the program owner
