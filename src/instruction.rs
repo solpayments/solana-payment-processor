@@ -1052,21 +1052,31 @@ mod test {
         .await;
     }
 
-    #[tokio::test]
-    async fn test_chain_checkout_insufficient_amount() {
-        let mint_keypair = Keypair::new();
-        let amount: u64 = 20;
-
+    async fn chain_checkout_failing_test_helper(
+        order_item_id: u8,
+        paid_amount: u64,
+        input_mint: &Keypair,
+        registered_item_id: u8,
+        expected_amount: u64,
+        registered_mint: &Keypair,
+        expected_error: InstructionError,
+    ) -> bool {
         let mut order_items: BTreeMap<String, u64> = BTreeMap::new();
-        order_items.insert("1".to_string(), 1);
+        order_items.insert(format!("{}", order_item_id), 1);
 
-        let merchant_data = format!(
-            r#"{{"1": {{"price": 2000000, "mint": "{mint_key}"}}}}"#,
-            mint_key = mint_keypair.pubkey()
-        );
+        let mut merchant_data = String::from("5");
+
+        if registered_item_id != 0 {
+            merchant_data = format!(
+                r#"{{"{registered_item_id}": {{"price": {expected_amount}, "mint": "{mint_key}"}}}}"#,
+                registered_item_id = registered_item_id,
+                expected_amount = expected_amount,
+                mint_key = registered_mint.pubkey()
+            );
+        }
 
         let mut merchant_result = create_merchant_account(
-            Some("chain2".to_string()),
+            Some("test".to_string()),
             Option::None,
             Option::None,
             Some(merchant_data),
@@ -1074,64 +1084,86 @@ mod test {
         .await;
 
         match create_chain_checkout_transaction(
-            amount,
+            paid_amount,
             &order_items,
             Option::None,
             &mut merchant_result,
-            &mint_keypair,
+            &input_mint,
         )
         .await
         {
             Err(error) => {
                 assert_eq!(
                     error.unwrap(),
-                    TransactionError::InstructionError(0, InstructionError::InsufficientFunds)
+                    TransactionError::InstructionError(0, expected_error)
                 );
             }
             Ok(_value) => panic!("Oo... we expect an error"),
         };
+
+        true
     }
 
     #[tokio::test]
-    async fn test_chain_checkout_invalid_order_items() {
-        let mint_keypair = Keypair::new();
-        let amount: u64 = 2000000000;
+    async fn test_chain_checkout_failure() {
+        let mint_a = Keypair::new();
+        let mint_b = Keypair::new();
 
-        let mut order_items: BTreeMap<String, u64> = BTreeMap::new();
-        order_items.insert("invalid".to_string(), 1);
-
-        let merchant_data = format!(
-            r#"{{"1": {{"price": 2000000, "mint": "{mint_key}"}}}}"#,
-            mint_key = mint_keypair.pubkey()
+        // insufficient funds
+        assert!(
+            chain_checkout_failing_test_helper(
+                1,       // id of item being ordered
+                20,      // amount to pay
+                &mint_a, // mint being used for payment
+                1,       // registered item id
+                30,      // expected amount
+                &mint_a, // expected mint
+                InstructionError::InsufficientFunds
+            )
+            .await
         );
-        let mut merchant_result = create_merchant_account(
-            Some("chain2".to_string()),
-            Option::None,
-            Option::None,
-            Some(merchant_data),
-        )
-        .await;
 
-        match create_chain_checkout_transaction(
-            amount,
-            &order_items,
-            Option::None,
-            &mut merchant_result,
-            &mint_keypair,
-        )
-        .await
-        {
-            Err(error) => {
-                assert_eq!(
-                    error.unwrap(),
-                    TransactionError::InstructionError(
-                        0,
-                        InstructionError::Custom(PaymentProcessorError::InvalidOrderData as u32)
-                    )
-                );
-            }
-            Ok(_value) => panic!("Oo... we expect an error"),
-        };
+        // wrong item id in order
+        assert!(
+            chain_checkout_failing_test_helper(
+                7,       // id of item being ordered
+                20,      // amount to pay
+                &mint_a, // mint being used for payment
+                1,       // registered item id
+                30,      // expected amount
+                &mint_a, // expected mint
+                InstructionError::Custom(PaymentProcessorError::InvalidOrderData as u32)
+            )
+            .await
+        );
+
+        // wrong mint in order
+        assert!(
+            chain_checkout_failing_test_helper(
+                1,       // id of item being ordered
+                20,      // amount to pay
+                &mint_a, // mint being used for payment
+                1,       // registered item id
+                20,      // expected amount
+                &mint_b, // expected mint
+                InstructionError::Custom(PaymentProcessorError::WrongMint as u32)
+            )
+            .await
+        );
+
+        // invalid merchant data
+        assert!(
+            chain_checkout_failing_test_helper(
+                1,       // id of item being ordered
+                20,      // amount to pay
+                &mint_a, // mint being used for payment
+                0,       // registered item id
+                20,      // expected amount
+                &mint_a, // expected mint
+                InstructionError::Custom(PaymentProcessorError::InvalidMerchantData as u32)
+            )
+            .await
+        );
     }
 
     #[tokio::test]
