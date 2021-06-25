@@ -94,8 +94,9 @@ pub enum PaymentProcessorInstruction {
     /// 2. `[]` The merchant account.  Owned by this program
     /// 3. `[writable]` The order token account (where the money was put during payment)
     /// 4. `[writable]` The merchant token account (where we will withdraw to)
-    /// 5. `[]` This program's derived address
-    /// 6. `[]` The token program
+    /// 5. `[writable]` This account receives the refunded SOL after closing order token account
+    /// 6. `[]` This program's derived address
+    /// 7. `[]` The token program
     Withdraw,
     /// Initialize a subscription
     ///
@@ -268,6 +269,7 @@ pub fn withdraw(
     merchant: Pubkey,
     order_payment_token: Pubkey,
     merchant_token: Pubkey,
+    account_to_receive_sol_refund: Pubkey,
     pda: Pubkey,
     subscription: Option<Pubkey>,
 ) -> Instruction {
@@ -277,6 +279,7 @@ pub fn withdraw(
         AccountMeta::new_readonly(merchant, false),
         AccountMeta::new(order_payment_token, false),
         AccountMeta::new(merchant_token, false),
+        AccountMeta::new(account_to_receive_sol_refund, false),
         AccountMeta::new_readonly(pda, false),
         AccountMeta::new_readonly(spl_token::id(), false),
     ];
@@ -1281,6 +1284,12 @@ mod test {
             &program_id,
         );
 
+        let account_to_receive_sol_refund_pubkey = Pubkey::from_str(PROGRAM_OWNER).unwrap();
+        let account_to_receive_sol_refund_before = banks_client
+            .get_account(account_to_receive_sol_refund_pubkey)
+            .await
+            .unwrap();
+
         // call withdraw ix
         let mut transaction = Transaction::new_with_payer(
             &[withdraw(
@@ -1290,6 +1299,7 @@ mod test {
                 merchant_account_pubkey,
                 order_payment_token_acc_pubkey,
                 merchant_token_keypair.pubkey(),
+                account_to_receive_sol_refund_pubkey,
                 pda,
                 Option::None,
             )],
@@ -1331,6 +1341,31 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(order_data.paid_amount, merchant_account_data.amount);
+
+        // test that token account was closed
+        let order_payment_token_acc = banks_client
+            .get_account(order_payment_token_acc_pubkey)
+            .await
+            .unwrap();
+        assert!(order_payment_token_acc.is_none());
+        // and that the refund was sent to expected account
+        let account_to_receive_sol_refund_after = banks_client
+            .get_account(account_to_receive_sol_refund_pubkey)
+            .await
+            .unwrap();
+        match account_to_receive_sol_refund_before {
+            None => panic!("Oo"),
+            Some(account_before) => match account_to_receive_sol_refund_after {
+                None => panic!("Oo"),
+                Some(account_after) => {
+                    // the before balance has increased by the rent amount
+                    assert_eq!(
+                        account_before.lamports,
+                        account_after.lamports - Rent::default().minimum_balance(TokenAccount::LEN)
+                    );
+                }
+            },
+        };
     }
 
     async fn run_subscribe_tests(
@@ -1342,9 +1377,6 @@ mod test {
         Result<(), TransportError>,
         Option<(SubscriptionAccount, MerchantResult, Pubkey, Pubkey)>,
     ) {
-        // let name = format!("{}:{}", subscription_name, package_name);
-        // let cloned_name = name.clone();
-
         let mut merchant_result = create_merchant_account(
             Some(String::from("subscription test")),
             Option::None,
@@ -1445,15 +1477,11 @@ mod test {
             r#"{{"packages":[{{"name":"basic","price":1000000,"duration":720,"mint":"{mint}"}},{{"name":"annual","price":11000000,"duration":262800,"mint":"{mint}"}}]}}"#,
             mint = mint_keypair.pubkey().to_string()
         );
-        assert!((run_subscribe_tests(
-            1000000,
-            "basic",
-            &packages,
-            &mint_keypair
-        )
-        .await)
-            .0
-            .is_ok());
+        assert!(
+            (run_subscribe_tests(1000000, "basic", &packages, &mint_keypair).await)
+                .0
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -1461,15 +1489,11 @@ mod test {
     async fn test_subscribe_no_packages() {
         let mint_keypair = Keypair::new();
         let packages = r#"{"packages":[]}"#;
-        assert!((run_subscribe_tests(
-            1337,
-            "basic",
-            packages,
-            &mint_keypair
-        )
-        .await)
-            .0
-            .is_err());
+        assert!(
+            (run_subscribe_tests(1337, "basic", packages, &mint_keypair).await)
+                .0
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -1481,8 +1505,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string()
         );
 
-        let result =
-            run_subscribe_tests(100, "a", &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(100, "a", &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
 
         let _ = match result.1 {
@@ -1677,6 +1700,7 @@ mod test {
                         subscribe_result.1 .1, // the merchant pubkey
                         order_payment_token_acc_pubkey,
                         merchant_token_keypair.pubkey(),
+                        Pubkey::from_str(PROGRAM_OWNER).unwrap(),
                         pda,
                         Some(subscription),
                     )],
