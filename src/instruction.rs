@@ -374,7 +374,6 @@ pub fn cancel_subscription(
 mod test {
     use {
         super::*,
-        crate::engine::common::get_hashed_seed,
         crate::engine::constants::{
             DEFAULT_FEE_IN_LAMPORTS, INITIAL, MERCHANT, MIN_FEE_IN_LAMPORTS, PAID, PDA_SEED,
             PROGRAM_OWNER, SPONSOR_FEE,
@@ -1342,7 +1341,7 @@ mod test {
         mint_keypair: &Keypair,
     ) -> (
         Result<(), TransportError>,
-        Option<(SubscriptionAccount, MerchantResult, Pubkey)>,
+        Option<(SubscriptionAccount, MerchantResult, Pubkey, Pubkey)>,
     ) {
         let name = format!("{}:{}", subscription_name, package_name);
         let cloned_name = name.clone();
@@ -1355,16 +1354,14 @@ mod test {
         )
         .await;
 
-        // we reference merchant_result directly so that we borrow all its values
-        let subscription = Pubkey::create_with_seed(
-            &merchant_result.3.pubkey(), // payer
-            &get_hashed_seed(
-                &merchant_result.1, // the merchant pubkey
-                package_name,
-            ),
-            &merchant_result.0, // program_id
-        )
-        .unwrap();
+        let (subscription, _bump_seed) = Pubkey::find_program_address(
+            &[
+                &merchant_result.3.pubkey().to_bytes(), // payer
+                &merchant_result.1.to_bytes(),          // merchant
+                &name.as_bytes(),
+            ],
+            &merchant_result.0, // program id
+        );
 
         let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
 
@@ -1430,7 +1427,12 @@ mod test {
 
             return (
                 result,
-                Some((subscription_data, merchant_result, order_acc_pubkey)),
+                Some((
+                    subscription_data,
+                    merchant_result,
+                    order_acc_pubkey,
+                    subscription,
+                )),
             );
         }
 
@@ -1563,7 +1565,6 @@ mod test {
             mint = mint_keypair.pubkey().to_string(),
             name = name
         );
-        // create the subscription
         let result = run_subscribe_tests(1000000, "demo", name, &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
@@ -1571,15 +1572,7 @@ mod test {
             None => (),
             Some(mut subscribe_result) => {
                 let subscription_account = subscribe_result.0;
-                let subscription = Pubkey::create_with_seed(
-                    &subscribe_result.1 .3.pubkey(), // payer
-                    &get_hashed_seed(
-                        &subscribe_result.1 .1, // the merchant pubkey
-                        name,                   // the package name
-                    ),
-                    &subscribe_result.1 .0, // program_id
-                )
-                .unwrap();
+                let subscription = subscribe_result.3; // the subscription pubkey
 
                 let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
 
@@ -1647,16 +1640,7 @@ mod test {
         let _ = match subscribe_result {
             None => (),
             Some(mut subscribe_result) => {
-                let subscription = Pubkey::create_with_seed(
-                    &subscribe_result.1 .3.pubkey(), // payer
-                    &get_hashed_seed(
-                        &subscribe_result.1 .1, // the merchant pubkey
-                        name,                   // the package name
-                    ),
-                    &subscribe_result.1 .0, // program_id
-                )
-                .unwrap();
-
+                let subscription = subscribe_result.3; // the subscription pubkey
                 let order_acc_pubkey = subscribe_result.2;
                 let merchant_token_keypair = Keypair::new();
                 let (pda, _bump_seed) =
@@ -1770,15 +1754,7 @@ mod test {
         match subscribe_result {
             None => Option::None,
             Some(mut subscribe_result) => {
-                let subscription = Pubkey::create_with_seed(
-                    &subscribe_result.1 .3.pubkey(), // payer
-                    &get_hashed_seed(
-                        &subscribe_result.1 .1, // the merchant pubkey
-                        name,                   // the package name
-                    ),
-                    &subscribe_result.1 .0, // program_id
-                )
-                .unwrap();
+                let subscription = subscribe_result.3; // the subscription pubkey
 
                 let previous_subscription_account =
                     subscribe_result.1 .2.get_account(subscription).await;
