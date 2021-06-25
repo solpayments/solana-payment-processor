@@ -3,7 +3,6 @@ use crate::{
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
 };
-use murmur3::murmur3_32;
 use serde_json::Error as JSONError;
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -17,7 +16,6 @@ use solana_program::{
     system_instruction,
     sysvar::rent::Rent,
 };
-use std::io::Cursor;
 
 /// ensure the order is for the subscription
 pub fn verify_subscription_order(
@@ -38,13 +36,10 @@ pub fn verify_subscription_order(
 
 /// Get subscription package
 pub fn get_subscription_package(
-    subscription_name: &str,
+    subscription_package_name: &str,
     merchant_account: &MerchantAccount,
 ) -> Result<Package, ProgramError> {
     // ensure the merchant has a subscription by this name
-    // TODO: using split looks janky.  Is it necessary?
-    let name_vec: Vec<&str> = subscription_name.split(":").collect();
-    let package_name = name_vec[1];
     let merchant_json_data: Result<Packages, JSONError> =
         serde_json::from_str(&merchant_account.data);
     let packages = match merchant_json_data {
@@ -54,7 +49,7 @@ pub fn get_subscription_package(
     // NB: if the are duplicates, take the first one --> verified in a test
     let package = packages
         .into_iter()
-        .find(|package| package.name == package_name);
+        .find(|package| package.name == subscription_package_name);
     match package {
         None => return Err(PaymentProcessorError::InvalidSubscriptionPackage.into()),
         Some(value) => Ok(value),
@@ -110,22 +105,6 @@ pub fn subscribe_checks(
         return Err(PaymentProcessorError::WrongMint.into());
     }
     Ok((order_account, package))
-}
-
-/// Get hash of a string
-///
-/// We are using murmur3 as the hashing algorithm as we don't need a
-/// cryptographically secure hashing algorithm.  We mostly need something fast
-/// with reasonably low chances of collisions
-pub fn hash(input: &str) -> String {
-    format!("{}", murmur3_32(&mut Cursor::new(input), 0).unwrap())
-}
-
-/// Get a hashed seed phrase
-///
-/// Basically hashes a base public key concatenated with an input string
-pub fn get_hashed_seed(base: &Pubkey, input: &str) -> String {
-    hash(&format!("{}:{}", base.to_string(), input))
 }
 
 /// Create associated token account

@@ -94,8 +94,9 @@ pub enum PaymentProcessorInstruction {
     /// 2. `[]` The merchant account.  Owned by this program
     /// 3. `[writable]` The order token account (where the money was put during payment)
     /// 4. `[writable]` The merchant token account (where we will withdraw to)
-    /// 5. `[]` This program's derived address
-    /// 6. `[]` The token program
+    /// 5. `[writable]` This account receives the refunded SOL after closing order token account
+    /// 6. `[]` This program's derived address
+    /// 7. `[]` The token program
     Withdraw,
     /// Initialize a subscription
     ///
@@ -268,6 +269,7 @@ pub fn withdraw(
     merchant: Pubkey,
     order_payment_token: Pubkey,
     merchant_token: Pubkey,
+    account_to_receive_sol_refund: Pubkey,
     pda: Pubkey,
     subscription: Option<Pubkey>,
 ) -> Instruction {
@@ -277,6 +279,7 @@ pub fn withdraw(
         AccountMeta::new_readonly(merchant, false),
         AccountMeta::new(order_payment_token, false),
         AccountMeta::new(merchant_token, false),
+        AccountMeta::new(account_to_receive_sol_refund, false),
         AccountMeta::new_readonly(pda, false),
         AccountMeta::new_readonly(spl_token::id(), false),
     ];
@@ -374,7 +377,6 @@ pub fn cancel_subscription(
 mod test {
     use {
         super::*,
-        crate::engine::common::get_hashed_seed,
         crate::engine::constants::{
             DEFAULT_FEE_IN_LAMPORTS, INITIAL, MERCHANT, MIN_FEE_IN_LAMPORTS, PAID, PDA_SEED,
             PROGRAM_OWNER, SPONSOR_FEE,
@@ -1282,6 +1284,12 @@ mod test {
             &program_id,
         );
 
+        let account_to_receive_sol_refund_pubkey = Pubkey::from_str(PROGRAM_OWNER).unwrap();
+        let account_to_receive_sol_refund_before = banks_client
+            .get_account(account_to_receive_sol_refund_pubkey)
+            .await
+            .unwrap();
+
         // call withdraw ix
         let mut transaction = Transaction::new_with_payer(
             &[withdraw(
@@ -1291,6 +1299,7 @@ mod test {
                 merchant_account_pubkey,
                 order_payment_token_acc_pubkey,
                 merchant_token_keypair.pubkey(),
+                account_to_receive_sol_refund_pubkey,
                 pda,
                 Option::None,
             )],
@@ -1332,39 +1341,58 @@ mod test {
             Err(error) => panic!("Problem: {:?}", error),
         };
         assert_eq!(order_data.paid_amount, merchant_account_data.amount);
+
+        // test that token account was closed
+        let order_payment_token_acc = banks_client
+            .get_account(order_payment_token_acc_pubkey)
+            .await
+            .unwrap();
+        assert!(order_payment_token_acc.is_none());
+        // and that the refund was sent to expected account
+        let account_to_receive_sol_refund_after = banks_client
+            .get_account(account_to_receive_sol_refund_pubkey)
+            .await
+            .unwrap();
+        match account_to_receive_sol_refund_before {
+            None => panic!("Oo"),
+            Some(account_before) => match account_to_receive_sol_refund_after {
+                None => panic!("Oo"),
+                Some(account_after) => {
+                    // the before balance has increased by the rent amount
+                    assert_eq!(
+                        account_before.lamports,
+                        account_after.lamports - Rent::default().minimum_balance(TokenAccount::LEN)
+                    );
+                }
+            },
+        };
     }
 
     async fn run_subscribe_tests(
         amount: u64,
-        subscription_name: &str,
         package_name: &str,
         merchant_data: &str,
         mint_keypair: &Keypair,
     ) -> (
         Result<(), TransportError>,
-        Option<(SubscriptionAccount, MerchantResult, Pubkey)>,
+        Option<(SubscriptionAccount, MerchantResult, Pubkey, Pubkey)>,
     ) {
-        let name = format!("{}:{}", subscription_name, package_name);
-        let cloned_name = name.clone();
-
         let mut merchant_result = create_merchant_account(
-            Some(String::from(subscription_name)),
+            Some(String::from("subscription test")),
             Option::None,
             Option::None,
             Some(String::from(merchant_data)),
         )
         .await;
 
-        // we reference merchant_result directly so that we borrow all its values
-        let subscription = Pubkey::create_with_seed(
-            &merchant_result.3.pubkey(), // payer
-            &get_hashed_seed(
-                &merchant_result.1, // the merchant pubkey
-                package_name,
-            ),
-            &merchant_result.0, // program_id
-        )
-        .unwrap();
+        let (subscription, _bump_seed) = Pubkey::find_program_address(
+            &[
+                &merchant_result.3.pubkey().to_bytes(), // payer
+                &merchant_result.1.to_bytes(),          // merchant
+                &package_name.as_bytes(),
+            ],
+            &merchant_result.0, // program id
+        );
 
         let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
 
@@ -1391,7 +1419,7 @@ mod test {
                 subscription,
                 merchant_account_pubkey,
                 order_acc_pubkey,
-                String::from(name),
+                String::from(package_name),
                 Option::None,
             )],
             Some(&payer.pubkey()),
@@ -1417,7 +1445,7 @@ mod test {
                 (SubscriptionStatus::Initialized as u8),
                 subscription_data.status
             );
-            assert_eq!(String::from(cloned_name), subscription_data.name);
+            assert_eq!(String::from(package_name), subscription_data.name);
             assert_eq!(
                 payer.pubkey(),
                 Pubkey::new_from_array(subscription_data.owner)
@@ -1430,7 +1458,12 @@ mod test {
 
             return (
                 result,
-                Some((subscription_data, merchant_result, order_acc_pubkey)),
+                Some((
+                    subscription_data,
+                    merchant_result,
+                    order_acc_pubkey,
+                    subscription,
+                )),
             );
         }
 
@@ -1444,16 +1477,11 @@ mod test {
             r#"{{"packages":[{{"name":"basic","price":1000000,"duration":720,"mint":"{mint}"}},{{"name":"annual","price":11000000,"duration":262800,"mint":"{mint}"}}]}}"#,
             mint = mint_keypair.pubkey().to_string()
         );
-        assert!((run_subscribe_tests(
-            1000000,
-            "cable subscription",
-            "basic",
-            &packages,
-            &mint_keypair
-        )
-        .await)
-            .0
-            .is_ok());
+        assert!(
+            (run_subscribe_tests(1000000, "basic", &packages, &mint_keypair).await)
+                .0
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -1461,16 +1489,11 @@ mod test {
     async fn test_subscribe_no_packages() {
         let mint_keypair = Keypair::new();
         let packages = r#"{"packages":[]}"#;
-        assert!((run_subscribe_tests(
-            1337,
-            "cable subscription",
-            "basic",
-            packages,
-            &mint_keypair
-        )
-        .await)
-            .0
-            .is_err());
+        assert!(
+            (run_subscribe_tests(1337, "basic", packages, &mint_keypair).await)
+                .0
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -1482,8 +1505,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string()
         );
 
-        let result =
-            run_subscribe_tests(100, "cable subscription", "a", &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(100, "a", &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
 
         let _ = match result.1 {
@@ -1510,7 +1532,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string()
         );
         assert!(
-            (run_subscribe_tests(100, "cable subscription", "zz", &packages, &mint_keypair).await)
+            (run_subscribe_tests(100, "zz", &packages, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1521,7 +1543,7 @@ mod test {
     async fn test_subscribe_no_packages_json() {
         let mint_keypair = Keypair::new();
         assert!(
-            (run_subscribe_tests(250, "sub", "package", r#"{}"#, &mint_keypair).await)
+            (run_subscribe_tests(250, "package", r#"{}"#, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1532,7 +1554,7 @@ mod test {
     async fn test_subscribe_no_json() {
         let mint_keypair = Keypair::new();
         assert!(
-            (run_subscribe_tests(250, "sub", "package", "what is?", &mint_keypair).await)
+            (run_subscribe_tests(250, "package", "what is?", &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1547,7 +1569,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string()
         );
         assert!(
-            (run_subscribe_tests(10, "Netflix", "basic", &packages, &mint_keypair).await)
+            (run_subscribe_tests(10, "Netflix-basic", &packages, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1563,29 +1585,20 @@ mod test {
             mint = mint_keypair.pubkey().to_string(),
             name = name
         );
-        // create the subscription
-        let result = run_subscribe_tests(1000000, "demo", name, &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(1000000, name, &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
         let _ = match subscribe_result {
             None => (),
             Some(mut subscribe_result) => {
                 let subscription_account = subscribe_result.0;
-                let subscription = Pubkey::create_with_seed(
-                    &subscribe_result.1 .3.pubkey(), // payer
-                    &get_hashed_seed(
-                        &subscribe_result.1 .1, // the merchant pubkey
-                        name,                   // the package name
-                    ),
-                    &subscribe_result.1 .0, // program_id
-                )
-                .unwrap();
+                let subscription = subscribe_result.3; // the subscription pubkey
 
                 let order_data = format!(r#"{{"subscription": "{}"}}"#, subscription.to_string());
 
                 let (order_acc_pubkey, _seller_account_pubkey) = create_order_express_checkout(
                     999999 * 600,
-                    &format!("{name}:1", name = name),
+                    &format!("{name}", name = name),
                     &String::from(""),
                     Some(order_data),
                     &mut subscribe_result.1,
@@ -1641,22 +1654,13 @@ mod test {
         error_expected: bool,
     ) {
         // create the subscription
-        let result = run_subscribe_tests(1000000, "demo1", name, &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(1000000, name, &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
         let _ = match subscribe_result {
             None => (),
             Some(mut subscribe_result) => {
-                let subscription = Pubkey::create_with_seed(
-                    &subscribe_result.1 .3.pubkey(), // payer
-                    &get_hashed_seed(
-                        &subscribe_result.1 .1, // the merchant pubkey
-                        name,                   // the package name
-                    ),
-                    &subscribe_result.1 .0, // program_id
-                )
-                .unwrap();
-
+                let subscription = subscribe_result.3; // the subscription pubkey
                 let order_acc_pubkey = subscribe_result.2;
                 let merchant_token_keypair = Keypair::new();
                 let (pda, _bump_seed) =
@@ -1696,6 +1700,7 @@ mod test {
                         subscribe_result.1 .1, // the merchant pubkey
                         order_payment_token_acc_pubkey,
                         merchant_token_keypair.pubkey(),
+                        Pubkey::from_str(PROGRAM_OWNER).unwrap(),
                         pda,
                         Some(subscription),
                     )],
@@ -1764,21 +1769,13 @@ mod test {
         SubscriptionAccount,
     )> {
         // create the subscription
-        let result = run_subscribe_tests(1000000, "demo1", name, &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(1000000, name, &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
         match subscribe_result {
             None => Option::None,
             Some(mut subscribe_result) => {
-                let subscription = Pubkey::create_with_seed(
-                    &subscribe_result.1 .3.pubkey(), // payer
-                    &get_hashed_seed(
-                        &subscribe_result.1 .1, // the merchant pubkey
-                        name,                   // the package name
-                    ),
-                    &subscribe_result.1 .0, // program_id
-                )
-                .unwrap();
+                let subscription = subscribe_result.3; // the subscription pubkey
 
                 let previous_subscription_account =
                     subscribe_result.1 .2.get_account(subscription).await;

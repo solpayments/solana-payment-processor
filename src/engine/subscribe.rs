@@ -1,4 +1,4 @@
-use crate::engine::common::{get_hashed_seed, subscribe_checks};
+use crate::engine::common::subscribe_checks;
 use crate::engine::constants::DEFAULT_DATA;
 use crate::error::PaymentProcessorError;
 use crate::state::{Serdes, SubscriptionAccount, SubscriptionStatus};
@@ -6,7 +6,7 @@ use crate::utils::get_subscription_account_size;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    program::invoke,
+    program::{invoke, invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction,
@@ -47,26 +47,49 @@ pub fn process_subscribe(
         Some(value) => value,
     };
     let account_size = get_subscription_account_size(&name, &data);
-    // the seed to use while creating the account should be a hash of the
-    // merchant pubkey + subscription package name so that we are guaranteed
-    // a deterministic account address for each subscription
-    // Creating subscription account on chain...
+    // the address of the subscription account is derived using the program id,
+    // the signer address, the merchant address, and the subscription package name
+    // thus ensuring a unique address for each signer + merchant + name
+    let (_subscribe_account_address, bump_seed) = Pubkey::find_program_address(
+        &[
+            &signer_info.key.to_bytes(),
+            &merchant_info.key.to_bytes(),
+            &name.as_bytes(),
+        ],
+        program_id,
+    );
+    // get signer seeds
+    let signer_seeds: &[&[_]] = &[
+        &signer_info.key.to_bytes(),
+        &merchant_info.key.to_bytes(),
+        &name.as_bytes(),
+        &[bump_seed],
+    ];
+
+    // Fund the subscription account with the minimum balance to be rent exempt
     invoke(
-        &system_instruction::create_account_with_seed(
-            signer_info.key,
+        &system_instruction::transfer(
+            &signer_info.key,
             subscription_info.key,
-            signer_info.key,
-            &get_hashed_seed(&merchant_info.key, &package.name),
             Rent::default().minimum_balance(account_size),
-            account_size as u64,
-            program_id,
         ),
         &[
             signer_info.clone(),
             subscription_info.clone(),
-            signer_info.clone(),
             system_program_info.clone(),
         ],
+    )?;
+    // Allocate space for the subscription account
+    invoke_signed(
+        &system_instruction::allocate(subscription_info.key, account_size as u64),
+        &[subscription_info.clone(), system_program_info.clone()],
+        &[&signer_seeds],
+    )?;
+    // Assign the subscription account to the SolPayments program
+    invoke_signed(
+        &system_instruction::assign(subscription_info.key, &program_id),
+        &[subscription_info.clone(), system_program_info.clone()],
+        &[&signer_seeds],
     )?;
 
     let rent = &Rent::from_account_info(rent_sysvar_info)?;

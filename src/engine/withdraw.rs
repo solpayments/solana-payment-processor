@@ -24,6 +24,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     let merchant_info = next_account_info(account_info_iter)?;
     let order_payment_token_info = next_account_info(account_info_iter)?;
     let merchant_token_info = next_account_info(account_info_iter)?;
+    let account_to_receive_sol_refund_info = next_account_info(account_info_iter)?;
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
 
@@ -120,9 +121,27 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         .unwrap(),
         &[
             token_program_info.clone(),
-            pda_info.clone(),
             order_payment_token_info.clone(),
             merchant_token_info.clone(),
+            pda_info.clone(),
+        ],
+        &[&[&PDA_SEED, &[pda_nonce]]],
+    )?;
+    // Close the order token account since it will never be needed again
+    invoke_signed(
+        &spl_token::instruction::close_account(
+            token_program_info.key,
+            order_payment_token_info.key,
+            account_to_receive_sol_refund_info.key,
+            &pda,
+            &[&pda],
+        )
+        .unwrap(),
+        &[
+            token_program_info.clone(),
+            order_payment_token_info.clone(),
+            account_to_receive_sol_refund_info.clone(),
+            pda_info.clone(),
         ],
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
