@@ -36,13 +36,10 @@ pub fn verify_subscription_order(
 
 /// Get subscription package
 pub fn get_subscription_package(
-    subscription_name: &str,
+    subscription_package_name: &str,
     merchant_account: &MerchantAccount,
 ) -> Result<Package, ProgramError> {
     // ensure the merchant has a subscription by this name
-    // TODO: using split looks janky.  Is it necessary?
-    let name_vec: Vec<&str> = subscription_name.split(":").collect();
-    let package_name = name_vec[1];
     let merchant_json_data: Result<Packages, JSONError> =
         serde_json::from_str(&merchant_account.data);
     let packages = match merchant_json_data {
@@ -52,7 +49,7 @@ pub fn get_subscription_package(
     // NB: if the are duplicates, take the first one --> verified in a test
     let package = packages
         .into_iter()
-        .find(|package| package.name == package_name);
+        .find(|package| package.name == subscription_package_name);
     match package {
         None => return Err(PaymentProcessorError::InvalidSubscriptionPackage.into()),
         Some(value) => Ok(value),
