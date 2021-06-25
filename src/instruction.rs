@@ -1335,7 +1335,6 @@ mod test {
 
     async fn run_subscribe_tests(
         amount: u64,
-        subscription_name: &str,
         package_name: &str,
         merchant_data: &str,
         mint_keypair: &Keypair,
@@ -1343,11 +1342,11 @@ mod test {
         Result<(), TransportError>,
         Option<(SubscriptionAccount, MerchantResult, Pubkey, Pubkey)>,
     ) {
-        let name = format!("{}:{}", subscription_name, package_name);
-        let cloned_name = name.clone();
+        // let name = format!("{}:{}", subscription_name, package_name);
+        // let cloned_name = name.clone();
 
         let mut merchant_result = create_merchant_account(
-            Some(String::from(subscription_name)),
+            Some(String::from("subscription test")),
             Option::None,
             Option::None,
             Some(String::from(merchant_data)),
@@ -1358,7 +1357,7 @@ mod test {
             &[
                 &merchant_result.3.pubkey().to_bytes(), // payer
                 &merchant_result.1.to_bytes(),          // merchant
-                &name.as_bytes(),
+                &package_name.as_bytes(),
             ],
             &merchant_result.0, // program id
         );
@@ -1388,7 +1387,7 @@ mod test {
                 subscription,
                 merchant_account_pubkey,
                 order_acc_pubkey,
-                String::from(name),
+                String::from(package_name),
                 Option::None,
             )],
             Some(&payer.pubkey()),
@@ -1414,7 +1413,7 @@ mod test {
                 (SubscriptionStatus::Initialized as u8),
                 subscription_data.status
             );
-            assert_eq!(String::from(cloned_name), subscription_data.name);
+            assert_eq!(String::from(package_name), subscription_data.name);
             assert_eq!(
                 payer.pubkey(),
                 Pubkey::new_from_array(subscription_data.owner)
@@ -1448,7 +1447,6 @@ mod test {
         );
         assert!((run_subscribe_tests(
             1000000,
-            "cable subscription",
             "basic",
             &packages,
             &mint_keypair
@@ -1465,7 +1463,6 @@ mod test {
         let packages = r#"{"packages":[]}"#;
         assert!((run_subscribe_tests(
             1337,
-            "cable subscription",
             "basic",
             packages,
             &mint_keypair
@@ -1485,7 +1482,7 @@ mod test {
         );
 
         let result =
-            run_subscribe_tests(100, "cable subscription", "a", &packages, &mint_keypair).await;
+            run_subscribe_tests(100, "a", &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
 
         let _ = match result.1 {
@@ -1512,7 +1509,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string()
         );
         assert!(
-            (run_subscribe_tests(100, "cable subscription", "zz", &packages, &mint_keypair).await)
+            (run_subscribe_tests(100, "zz", &packages, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1523,7 +1520,7 @@ mod test {
     async fn test_subscribe_no_packages_json() {
         let mint_keypair = Keypair::new();
         assert!(
-            (run_subscribe_tests(250, "sub", "package", r#"{}"#, &mint_keypair).await)
+            (run_subscribe_tests(250, "package", r#"{}"#, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1534,7 +1531,7 @@ mod test {
     async fn test_subscribe_no_json() {
         let mint_keypair = Keypair::new();
         assert!(
-            (run_subscribe_tests(250, "sub", "package", "what is?", &mint_keypair).await)
+            (run_subscribe_tests(250, "package", "what is?", &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1549,7 +1546,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string()
         );
         assert!(
-            (run_subscribe_tests(10, "Netflix", "basic", &packages, &mint_keypair).await)
+            (run_subscribe_tests(10, "Netflix-basic", &packages, &mint_keypair).await)
                 .0
                 .is_err()
         );
@@ -1565,7 +1562,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string(),
             name = name
         );
-        let result = run_subscribe_tests(1000000, "demo", name, &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(1000000, name, &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
         let _ = match subscribe_result {
@@ -1578,7 +1575,7 @@ mod test {
 
                 let (order_acc_pubkey, _seller_account_pubkey) = create_order_express_checkout(
                     999999 * 600,
-                    &format!("{name}:1", name = name),
+                    &format!("{name}", name = name),
                     &String::from(""),
                     Some(order_data),
                     &mut subscribe_result.1,
@@ -1634,7 +1631,7 @@ mod test {
         error_expected: bool,
     ) {
         // create the subscription
-        let result = run_subscribe_tests(1000000, "demo1", name, &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(1000000, name, &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
         let _ = match subscribe_result {
@@ -1748,7 +1745,7 @@ mod test {
         SubscriptionAccount,
     )> {
         // create the subscription
-        let result = run_subscribe_tests(1000000, "demo1", name, &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(1000000, name, &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
         match subscribe_result {
