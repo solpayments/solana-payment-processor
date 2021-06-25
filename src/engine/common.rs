@@ -3,7 +3,6 @@ use crate::{
     error::PaymentProcessorError,
     state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
 };
-use murmur3::murmur3_32;
 use serde_json::Error as JSONError;
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -17,7 +16,6 @@ use solana_program::{
     system_instruction,
     sysvar::rent::Rent,
 };
-use std::io::Cursor;
 
 /// ensure the order is for the subscription
 pub fn verify_subscription_order(
@@ -110,22 +108,6 @@ pub fn subscribe_checks(
         return Err(PaymentProcessorError::WrongMint.into());
     }
     Ok((order_account, package))
-}
-
-/// Get hash of a string
-///
-/// We are using murmur3 as the hashing algorithm as we don't need a
-/// cryptographically secure hashing algorithm.  We mostly need something fast
-/// with reasonably low chances of collisions
-pub fn hash(input: &str) -> String {
-    format!("{}", murmur3_32(&mut Cursor::new(input), 0).unwrap())
-}
-
-/// Get a hashed seed phrase
-///
-/// Basically hashes a base public key concatenated with an input string
-pub fn get_hashed_seed(base: &Pubkey, input: &str) -> String {
-    hash(&format!("{}:{}", base.to_string(), input))
 }
 
 /// Create associated token account
