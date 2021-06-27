@@ -171,8 +171,9 @@ pub enum PaymentProcessorInstruction {
     /// 3. `[writable]` The order account.  Owned by this program
     /// 4. `[writable]` The order token account - this is where the amount was paid into. Owned by this program
     /// 5. `[writable]` The refund token account - this is where the refund will go
-    /// 6. `[]` This program's derived address
-    /// 7. `[]` The token program
+    /// 6. `[writable]` This account receives the refunded SOL after closing order token account
+    /// 7. `[]` This program's derived address
+    /// 8. `[]` The token program
     CancelSubscription,
 }
 
@@ -384,6 +385,7 @@ pub fn cancel_subscription(
     order: Pubkey,
     order_token: Pubkey,
     refund_token: Pubkey,
+    account_to_receive_sol_refund: Pubkey,
     pda: Pubkey,
 ) -> Instruction {
     Instruction {
@@ -395,6 +397,7 @@ pub fn cancel_subscription(
             AccountMeta::new(order, false),
             AccountMeta::new(order_token, false),
             AccountMeta::new(refund_token, false),
+            AccountMeta::new(account_to_receive_sol_refund, false),
             AccountMeta::new_readonly(pda, false),
             AccountMeta::new_readonly(spl_token::id(), false),
         ],
@@ -1267,6 +1270,27 @@ mod test {
         .await;
     }
 
+    async fn run_order_token_account_refund_tests(
+        order_payment_token_acc: &Option<solana_sdk::account::Account>,
+        account_to_receive_sol_refund_before: &Option<solana_sdk::account::Account>,
+        account_to_receive_sol_refund_after: &Option<solana_sdk::account::Account>,
+    ) {
+        assert!(order_payment_token_acc.is_none());
+        match account_to_receive_sol_refund_before {
+            None => panic!("Oo"),
+            Some(account_before) => match account_to_receive_sol_refund_after {
+                None => panic!("Oo"),
+                Some(account_after) => {
+                    // the before balance has increased by the rent amount
+                    assert_eq!(
+                        account_before.lamports,
+                        account_after.lamports - Rent::default().minimum_balance(TokenAccount::LEN)
+                    );
+                }
+            },
+        };
+    }
+
     #[tokio::test]
     async fn test_withdraw() {
         let mut merchant_result =
@@ -1373,30 +1397,21 @@ mod test {
         };
         assert_eq!(order_data.paid_amount, merchant_account_data.amount);
 
-        // test that token account was closed
+        // test that token account was closed and that the refund was sent to expected account
         let order_payment_token_acc = banks_client
             .get_account(order_payment_token_acc_pubkey)
             .await
             .unwrap();
-        assert!(order_payment_token_acc.is_none());
-        // and that the refund was sent to expected account
         let account_to_receive_sol_refund_after = banks_client
             .get_account(account_to_receive_sol_refund_pubkey)
             .await
             .unwrap();
-        match account_to_receive_sol_refund_before {
-            None => panic!("Oo"),
-            Some(account_before) => match account_to_receive_sol_refund_after {
-                None => panic!("Oo"),
-                Some(account_after) => {
-                    // the before balance has increased by the rent amount
-                    assert_eq!(
-                        account_before.lamports,
-                        account_after.lamports - Rent::default().minimum_balance(TokenAccount::LEN)
-                    );
-                }
-            },
-        };
+        run_order_token_account_refund_tests(
+            &order_payment_token_acc,
+            &account_to_receive_sol_refund_before,
+            &account_to_receive_sol_refund_after,
+        )
+        .await;
     }
 
     async fn run_subscribe_tests(
@@ -1795,9 +1810,11 @@ mod test {
     ) -> Option<(
         SubscriptionAccount,
         OrderAccount,
-        spl_token::state::Account,
+        Option<solana_sdk::account::Account>,
         spl_token::state::Account,
         SubscriptionAccount,
+        Option<solana_sdk::account::Account>,
+        Option<solana_sdk::account::Account>,
     )> {
         // create the subscription
         let result = run_subscribe_tests(1000000, name, &packages, &mint_keypair).await;
@@ -1851,6 +1868,14 @@ mod test {
                     &subscribe_result.1 .0, // program_id
                 );
 
+                let account_to_receive_sol_refund_pubkey = Pubkey::from_str(PROGRAM_OWNER).unwrap();
+                let account_to_receive_sol_refund_before = subscribe_result
+                    .1
+                     .2
+                    .get_account(account_to_receive_sol_refund_pubkey)
+                    .await
+                    .unwrap();
+
                 // call cancel ix
                 let mut transaction = Transaction::new_with_payer(
                     &[cancel_subscription(
@@ -1861,6 +1886,7 @@ mod test {
                         order_acc_pubkey,
                         order_token_acc_pubkey,
                         refund_token_acc_keypair.pubkey(),
+                        account_to_receive_sol_refund_pubkey,
                         pda,
                     )],
                     Some(&subscribe_result.1 .3.pubkey()),
@@ -1895,17 +1921,8 @@ mod test {
                     .1
                      .2
                     .get_account(order_token_acc_pubkey)
-                    .await;
-                let order_token_account = match order_token_account {
-                    Ok(data) => match data {
-                        None => panic!("Oo"),
-                        Some(value) => match TokenAccount::unpack(&value.data) {
-                            Ok(data) => data,
-                            Err(error) => panic!("Problem: {:?}", error),
-                        },
-                    },
-                    Err(error) => panic!("Problem: {:?}", error),
-                };
+                    .await
+                    .unwrap();
                 let refund_token_account = subscribe_result
                     .1
                      .2
@@ -1922,12 +1939,21 @@ mod test {
                     Err(error) => panic!("Problem: {:?}", error),
                 };
 
+                let account_to_receive_sol_refund_after = subscribe_result
+                    .1
+                     .2
+                    .get_account(account_to_receive_sol_refund_pubkey)
+                    .await
+                    .unwrap();
+
                 Some((
                     subscription_account,
                     order_account,
                     order_token_account,
                     refund_token_account,
                     previous_subscription_account,
+                    account_to_receive_sol_refund_before,
+                    account_to_receive_sol_refund_after,
                 ))
             }
         }
@@ -1943,7 +1969,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string(),
             name = name
         );
-        // withdraw goes okay
+        // cancel goes okay
         let result = run_subscription_cancel_tests(name, &packages, &mint_keypair)
             .await
             .unwrap();
@@ -1953,6 +1979,8 @@ mod test {
             order_token_account,
             refund_token_account,
             previous_subscription_account,
+            account_to_receive_sol_refund_before,
+            account_to_receive_sol_refund_after,
         ) = result;
         // subscription was canceled
         assert_eq!(
@@ -1967,9 +1995,15 @@ mod test {
         assert!(previous_subscription_account.period_end > subscription_account.period_end);
         // order account was cancelled
         assert_eq!(OrderStatus::Cancelled as u8, order_account.status);
-        assert_eq!(0, order_token_account.amount);
         // amount was withdrawn
         assert_eq!(order_account.paid_amount, refund_token_account.amount);
+        // order token account was closed and SOL refunded
+        run_order_token_account_refund_tests(
+            &order_token_account,
+            &account_to_receive_sol_refund_before,
+            &account_to_receive_sol_refund_after,
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -1982,7 +2016,7 @@ mod test {
             mint = mint_keypair.pubkey().to_string(),
             name = name
         );
-        // withdraw goes okay
+        // cancel goes okay but no refund
         let result = run_subscription_cancel_tests(name, &packages, &mint_keypair)
             .await
             .unwrap();
@@ -1992,6 +2026,8 @@ mod test {
             order_token_account,
             refund_token_account,
             previous_subscription_account,
+            account_to_receive_sol_refund_before,
+            account_to_receive_sol_refund_after,
         ) = result;
         // subscription was canceled
         assert_eq!(
@@ -2008,8 +2044,24 @@ mod test {
         );
         // order account was not changed
         assert_eq!(OrderStatus::Paid as u8, order_account.status);
-        assert_eq!(order_account.paid_amount, order_token_account.amount);
         // nothing was refunded
         assert_eq!(0, refund_token_account.amount);
+        let order_token_account = match order_token_account {
+            None => panic!("Oo"),
+            Some(value) => match TokenAccount::unpack(&value.data) {
+                Ok(data) => data,
+                Err(error) => panic!("Problem: {:?}", error),
+            },
+        };
+        assert_eq!(order_account.paid_amount, order_token_account.amount);
+        match account_to_receive_sol_refund_before {
+            None => panic!("Oo"),
+            Some(account_before) => match account_to_receive_sol_refund_after {
+                None => panic!("Oo"),
+                Some(account_after) => {
+                    assert_eq!(account_before.lamports, account_after.lamports);
+                }
+            },
+        };
     }
 }
