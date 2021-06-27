@@ -29,7 +29,10 @@ pub enum PaymentProcessorInstruction {
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
     },
-    /// Express Checkout - create order and pay for it in one transaction
+    /// Express Checkout
+    ///
+    /// Meant to be used to process payments initialized by systems that reside off-chain
+    /// such as traditional e-commerce software.
     ///
     /// Accounts expected:
     ///
@@ -59,7 +62,15 @@ pub enum PaymentProcessorInstruction {
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
     },
-    /// Express Checkout - create order and pay for it in one transaction
+    /// Chain Checkout
+    ///
+    /// Meant to process payments that are validated completely on chain.  That is,
+    /// all the information required to check that the payment is valid is available
+    /// on-chain.
+    ///
+    /// This is made possible by relying on a merchant account that has certain defined
+    /// items for which payment can be made.  See the engine::json::Item struct as well
+    /// as the chain checkout tests for more on how this works.
     ///
     /// Accounts expected:
     ///
@@ -87,6 +98,9 @@ pub enum PaymentProcessorInstruction {
     },
     /// Withdraw funds for a particular order
     ///
+    /// Note that a payment cannot be withdrawn for an order made for a subscription
+    /// payment that is still within the subscription trial period.
+    ///
     /// Accounts expected:
     ///
     /// 0. `[signer]` The account of the person initializing the transaction
@@ -99,6 +113,14 @@ pub enum PaymentProcessorInstruction {
     /// 7. `[]` The token program
     Withdraw,
     /// Initialize a subscription
+    ///
+    /// A subscription is possible by relying on a merchant account that was created with
+    /// the correct subscription package information.  See engine::json::Packages as well as
+    /// subscription tests for more on this.
+    ///
+    /// A complete subscription transaction includes an ExpressCheckout instruction followed
+    /// by a Subscribe instruction.  The actual payment is made in the ExpressCheckout instruction
+    /// and subsequently thr subscription is activated in the Subscribe instruction.
     ///
     /// Accounts expected:
     ///
@@ -118,6 +140,11 @@ pub enum PaymentProcessorInstruction {
     },
     /// Renew a subscription
     ///
+    /// A complete RenewSubscription transaction includes an ExpressCheckout instruction
+    /// followed by a RenewSubscription instruction.  The actual payment is made in the
+    /// ExpressCheckout instruction and subsequently thr subscription is activated in the
+    /// RenewSubscription instruction.
+    ///
     /// Accounts expected:
     ///
     /// 0. `[signer]` The account of the person initializing the transaction
@@ -131,6 +158,10 @@ pub enum PaymentProcessorInstruction {
         quantity: i64,
     },
     /// Cancel a subscription
+    ///
+    /// If a CancelSubscription instruction is sent during the trial period of a
+    /// subscription, the amount initially paid for the subscription will be refunded in
+    /// full.
     ///
     /// Accounts expected:
     ///
