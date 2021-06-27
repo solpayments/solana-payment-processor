@@ -26,6 +26,7 @@ pub fn process_cancel_subscription(program_id: &Pubkey, accounts: &[AccountInfo]
     let order_info = next_account_info(account_info_iter)?;
     let order_token_info = next_account_info(account_info_iter)?;
     let refund_token_info = next_account_info(account_info_iter)?;
+    let account_to_receive_sol_refund_info = next_account_info(account_info_iter)?;
     let pda_info = next_account_info(account_info_iter)?;
     let token_program_info = next_account_info(account_info_iter)?;
 
@@ -105,6 +106,24 @@ pub fn process_cancel_subscription(program_id: &Pubkey, accounts: &[AccountInfo]
                 pda_info.clone(),
                 order_token_info.clone(),
                 refund_token_info.clone(),
+            ],
+            &[&[&PDA_SEED, &[pda_nonce]]],
+        )?;
+        // Close the order token account since it will never be needed again
+        invoke_signed(
+            &spl_token::instruction::close_account(
+                token_program_info.key,
+                order_token_info.key,
+                account_to_receive_sol_refund_info.key,
+                &pda,
+                &[&pda],
+            )
+            .unwrap(),
+            &[
+                token_program_info.clone(),
+                order_token_info.clone(),
+                account_to_receive_sol_refund_info.clone(),
+                pda_info.clone(),
             ],
             &[&[&PDA_SEED, &[pda_nonce]]],
         )?;
