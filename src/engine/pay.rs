@@ -2,10 +2,10 @@ use crate::{
     engine::{
         common::create_program_owned_associated_token_account,
         constants::{DEFAULT_DATA, INITIAL, PAID, PROGRAM_OWNER, SPONSOR_FEE},
-        json::Item,
+        json::{Item, OrderItems},
     },
     error::PaymentProcessorError,
-    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
+    state::{Discriminator, MerchantAccount, OrderAccount, OrderStatus, Serdes},
     utils::{get_amounts, get_order_account_size},
 };
 use serde_json::{json, Error as JSONError, Value};
@@ -85,7 +85,7 @@ pub fn order_checks(
 pub fn chain_checkout_checks(
     merchant_account: &MerchantAccount,
     mint: &AccountInfo,
-    order_items: &BTreeMap<String, u64>,
+    order_items: &OrderItems,
     amount: u64,
 ) -> ProgramResult {
     let merchant_json_data: Result<BTreeMap<String, Item>, JSONError> =
@@ -133,7 +133,7 @@ pub fn process_order(
     order_id: String,
     secret: String,
     maybe_data: Option<String>,
-    checkout_items: Option<BTreeMap<String, u64>>,
+    checkout_items: Option<OrderItems>,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
 
@@ -169,8 +169,11 @@ pub fn process_order(
         Some(value) => value,
     };
 
+    let mut order_account_type = Discriminator::OrderExpressCheckout as u8;
+
     // process chain checkout
     if checkout_items.is_some() {
+        order_account_type = Discriminator::OrderChainCheckout as u8;
         let order_items = checkout_items.unwrap();
         chain_checkout_checks(&merchant_account, &mint_info.clone(), &order_items, amount)?;
         if data == String::from(DEFAULT_DATA) {
@@ -292,6 +295,7 @@ pub fn process_order(
     let mut order_account_data = order_info.try_borrow_mut_data()?;
     // Saving order information...
     let order = OrderAccount {
+        discriminator: order_account_type,
         status: OrderStatus::Paid as u8,
         created: timestamp,
         modified: timestamp,
@@ -340,7 +344,7 @@ pub fn process_chain_checkout(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     amount: u64,
-    order_items: BTreeMap<String, u64>,
+    order_items: OrderItems,
     maybe_data: Option<String>,
 ) -> ProgramResult {
     process_order(
