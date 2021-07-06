@@ -197,3 +197,20 @@ pub fn create_program_owned_associated_token_account(
 
     Ok(())
 }
+
+/// Transfer SOL from one account to another
+/// Used for accounts not owned by the system program
+pub fn transfer_sol(
+    sol_origin_info: AccountInfo,
+    sol_destination_info: AccountInfo,
+    amount: u64,
+) -> ProgramResult {
+    // Transfer tokens from the account to the sol_destination.
+    let dest_starting_lamports = sol_destination_info.lamports();
+    let origin_starting_lamports = sol_origin_info.lamports();
+
+    **sol_destination_info.lamports.borrow_mut() =
+        dest_starting_lamports.checked_add(amount).unwrap();
+    **sol_origin_info.lamports.borrow_mut() = origin_starting_lamports.checked_sub(amount).unwrap();
+    Ok(())
+}
