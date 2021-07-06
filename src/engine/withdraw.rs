@@ -1,8 +1,10 @@
 use crate::{
-    engine::common::{get_subscription_package, verify_subscription_order},
+    engine::common::{get_subscription_package, transfer_sol, verify_subscription_order},
     engine::constants::{PACKAGES, PDA_SEED, TRIAL},
     error::PaymentProcessorError,
-    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount},
+    state::{
+        Discriminator, MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
+    },
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -17,7 +19,11 @@ use solana_program::{
 };
 use spl_token::{self, state::Account as TokenAccount};
 
-pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+pub fn process_withdraw_payment(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    close_order_account: Option<bool>,
+) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let signer_info = next_account_info(account_info_iter)?;
     let order_info = next_account_info(account_info_iter)?;
@@ -145,6 +151,26 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         ],
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
+
+    // check if order account should be closed
+    let should_close_order_acc: bool = match close_order_account {
+        None => false,
+        Some(value) => value,
+    };
+    if should_close_order_acc {
+        if merchant_info.owner != signer_info.key {
+            msg!("Error: Only merchant account owner can close order account");
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+        // mark account as closed
+        order_account.discriminator = Discriminator::Closed as u8;
+        // Transfer all the sol from the order account to the sol_destination.
+        transfer_sol(
+            order_info.clone(),
+            account_to_receive_sol_refund_info.clone(),
+            order_info.lamports(),
+        )?;
+    }
 
     // Updating order account information...
     order_account.status = OrderStatus::Withdrawn as u8;
