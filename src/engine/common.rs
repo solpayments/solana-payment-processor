@@ -1,7 +1,7 @@
 use crate::{
     engine::json::{OrderSubscription, Package, Packages},
     error::PaymentProcessorError,
-    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes},
+    state::{IsClosed, MerchantAccount, OrderAccount, OrderStatus, Serdes},
 };
 use serde_json::Error as JSONError;
 use solana_program::program_pack::Pack;
@@ -80,11 +80,20 @@ pub fn subscribe_checks(
     }
     // get the merchant account
     let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
+    if merchant_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
+    }
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
     // get the order account
     let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
+    if order_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
+    }
+    if !order_account.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
     // ensure this order is for this subscription
     verify_subscription_order(subscription_info, &order_account)?;
     // ensure we have the right payer

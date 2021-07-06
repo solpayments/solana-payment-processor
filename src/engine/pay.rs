@@ -5,7 +5,7 @@ use crate::{
         json::{Item, OrderItems},
     },
     error::PaymentProcessorError,
-    state::{Discriminator, MerchantAccount, OrderAccount, OrderStatus, Serdes},
+    state::{Discriminator, IsClosed, MerchantAccount, OrderAccount, OrderStatus, Serdes},
     utils::{get_amounts, get_order_account_size},
 };
 use serde_json::{json, Error as JSONError, Value};
@@ -46,6 +46,9 @@ pub fn order_checks(
     }
     // get the merchant account
     let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
+    if merchant_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
+    }
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }

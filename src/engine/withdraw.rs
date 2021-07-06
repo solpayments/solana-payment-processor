@@ -3,7 +3,7 @@ use crate::{
     engine::constants::{PACKAGES, PDA_SEED, TRIAL},
     error::PaymentProcessorError,
     state::{
-        Discriminator, MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
+        Discriminator, IsClosed, MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
     },
 };
 use solana_program::program_pack::Pack;
@@ -61,6 +61,9 @@ pub fn process_withdraw_payment(
     }
     // get the merchant account
     let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
+    if merchant_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
+    }
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
@@ -73,6 +76,9 @@ pub fn process_withdraw_payment(
     }
     // get the order account
     let mut order_account = OrderAccount::unpack(&order_info.data.borrow())?;
+    if order_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
+    }
     if !order_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
@@ -100,6 +106,9 @@ pub fn process_withdraw_payment(
         verify_subscription_order(subscription_info, &order_account)?;
         // get the subscription account
         let subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
+        if subscription_account.is_closed() {
+            return Err(PaymentProcessorError::ClosedAccount.into());
+        }
         if !subscription_account.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }

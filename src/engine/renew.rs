@@ -1,6 +1,6 @@
 use crate::engine::common::subscribe_checks;
 use crate::error::PaymentProcessorError;
-use crate::state::{Serdes, SubscriptionAccount};
+use crate::state::{IsClosed, Serdes, SubscriptionAccount};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -32,6 +32,9 @@ pub fn process_renew_subscription(
     let mut subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
     if !subscription_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
+    }
+    if subscription_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
     }
     let (order_account, package) = subscribe_checks(
         program_id,
