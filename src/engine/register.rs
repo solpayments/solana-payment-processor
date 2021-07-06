@@ -1,7 +1,9 @@
 use crate::{
-    engine::constants::{DEFAULT_DATA, DEFAULT_FEE_IN_LAMPORTS, MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER},
+    engine::constants::{
+        DEFAULT_DATA, DEFAULT_FEE_IN_LAMPORTS, MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER, TRIAL,
+    },
     engine::json::{Item, Packages},
-    state::{MerchantAccount, Discriminator, Serdes},
+    state::{Discriminator, MerchantAccount, Serdes},
     utils::get_merchant_account_size,
 };
 use serde_json::Error as JSONError;
@@ -68,16 +70,24 @@ pub fn process_register_merchant(
     )?;
 
     // get merchant account type
+    // TODO: add test(s) that this is set correctly
     let maybe_subscription_merchant: Result<Packages, JSONError> = serde_json::from_str(&data);
     let merchant_account_type: u8 = match maybe_subscription_merchant {
-        Ok(_value) => Discriminator::MerchantSubscription as u8,
+        Ok(_value) => {
+            if data.contains(TRIAL) {
+                Discriminator::MerchantSubscriptionWithTrial as u8
+            } else {
+                Discriminator::MerchantSubscription as u8
+            }
+        }
         Err(_error) => {
-            let maybe_chain_checkout: Result<BTreeMap<String, Item>, JSONError> = serde_json::from_str(&data);
+            let maybe_chain_checkout: Result<BTreeMap<String, Item>, JSONError> =
+                serde_json::from_str(&data);
             match maybe_chain_checkout {
                 Ok(_value) => Discriminator::MerchantChainCheckout as u8,
-                Err(_error) => Discriminator::Merchant as u8
+                Err(_error) => Discriminator::Merchant as u8,
             }
-        },
+        }
     };
 
     // get the merchant account data
@@ -96,7 +106,10 @@ pub fn process_register_merchant(
             Some(value) => {
                 let mut result = value;
                 if result < MIN_FEE_IN_LAMPORTS {
-                    msg!("Info: setting minimum transaction fee of {:?}", MIN_FEE_IN_LAMPORTS);
+                    msg!(
+                        "Info: setting minimum transaction fee of {:?}",
+                        MIN_FEE_IN_LAMPORTS
+                    );
                     result = MIN_FEE_IN_LAMPORTS;
                 }
                 result
