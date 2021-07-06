@@ -18,14 +18,20 @@ pub trait Serdes: Sized + BorshSerialize + BorshDeserialize {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq)]
-pub enum MerchantStatus {
+pub enum Discriminator {
     Uninitialized = 0,
-    Initialized = 1,
+    Merchant = 10,
+    MerchantSubscription = 11,
+    MerchantChainCheckout = 12,
+    OrderExpressCheckout = 20,
+    OrderChainCheckout = 21,
+    Subscription = 30,
+    Closed = 255,
 }
 
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct MerchantAccount {
-    pub status: u8,
+    pub discriminator: u8,
     pub owner: PublicKey,
     pub sponsor: PublicKey,
     /// represents the fee (in SOL lamports) that will be charged for transactions
@@ -46,6 +52,7 @@ pub enum OrderStatus {
 
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct OrderAccount {
+    pub discriminator: u8,
     pub status: u8,
     pub created: UnixTimestamp,
     pub modified: UnixTimestamp,
@@ -71,6 +78,7 @@ pub enum SubscriptionStatus {
 
 #[derive(BorshSerialize, BorshSchema, BorshDeserialize, Debug, PartialEq)]
 pub struct SubscriptionAccount {
+    pub discriminator: u8,
     pub status: u8,
     pub owner: PublicKey,
     pub merchant: PublicKey,
@@ -88,12 +96,6 @@ impl Sealed for MerchantAccount {}
 
 impl Serdes for MerchantAccount {}
 
-impl IsInitialized for MerchantAccount {
-    fn is_initialized(&self) -> bool {
-        self.status != MerchantStatus::Uninitialized as u8
-    }
-}
-
 impl MerchantAccount {
     pub const MIN_LEN: usize =
         size_of::<u8>() + size_of::<PublicKey>() + size_of::<PublicKey>() + size_of::<u64>();
@@ -104,14 +106,9 @@ impl Sealed for OrderAccount {}
 
 impl Serdes for OrderAccount {}
 
-impl IsInitialized for OrderAccount {
-    fn is_initialized(&self) -> bool {
-        self.status != OrderStatus::Uninitialized as u8
-    }
-}
-
 impl OrderAccount {
     pub const MIN_LEN: usize = size_of::<u8>()
+        + size_of::<u8>()
         + size_of::<UnixTimestamp>()
         + size_of::<UnixTimestamp>()
         + size_of::<PublicKey>()
@@ -127,17 +124,41 @@ impl Sealed for SubscriptionAccount {}
 
 impl Serdes for SubscriptionAccount {}
 
-impl IsInitialized for SubscriptionAccount {
-    fn is_initialized(&self) -> bool {
-        self.status != MerchantStatus::Uninitialized as u8
-    }
-}
-
 impl SubscriptionAccount {
     pub const MIN_LEN: usize = size_of::<u8>()
+        + size_of::<u8>()
         + size_of::<PublicKey>()
         + size_of::<PublicKey>()
         + size_of::<UnixTimestamp>()
         + size_of::<UnixTimestamp>()
         + size_of::<UnixTimestamp>();
 }
+
+/// Check if a program account state is closed
+pub trait IsClosed {
+    /// Is closed
+    fn is_closed(&self) -> bool;
+}
+
+macro_rules! impl_IsInitialized {
+    (for $($t:ty),+) => {
+        $(impl IsInitialized for $t {
+            fn is_initialized(&self) -> bool {
+                self.discriminator != Discriminator::Uninitialized as u8
+            }
+        })*
+    }
+}
+
+macro_rules! impl_IsClosed {
+    (for $($t:ty),+) => {
+        $(impl IsClosed for $t {
+            fn is_closed(&self) -> bool {
+                self.discriminator == Discriminator::Closed as u8
+            }
+        })*
+    }
+}
+
+impl_IsInitialized!(for MerchantAccount, OrderAccount, SubscriptionAccount);
+impl_IsClosed!(for MerchantAccount, OrderAccount, SubscriptionAccount);
