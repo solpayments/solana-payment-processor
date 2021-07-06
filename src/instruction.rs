@@ -6,6 +6,7 @@ use solana_program::{
 };
 use spl_token::{self};
 use std::collections::BTreeMap;
+use crate::engine::json::OrderItems;
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub enum PaymentProcessorInstruction {
@@ -55,7 +56,7 @@ pub enum PaymentProcessorInstruction {
         #[allow(dead_code)] // not dead code..
         order_id: String,
         // An extra field that can store an encrypted (ot not encrypted) string
-        // that the merchant can use to assert if a transaction is authenci
+        // that the merchant can use to assert if a transaction is authentic
         #[allow(dead_code)] // not dead code..
         secret: String,
         /// arbitrary merchant data (maybe as a JSON string)
@@ -91,7 +92,7 @@ pub enum PaymentProcessorInstruction {
         amount: u64,
         /// the external order id (as in issued by the merchant)
         #[allow(dead_code)] // not dead code..
-        order_items: BTreeMap<String, u64>,
+        order_items: BTreeMap<String, u64>,  // use this instead of OrderItems for readability in API
         /// arbitrary merchant data (maybe as a JSON string)
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
@@ -111,7 +112,11 @@ pub enum PaymentProcessorInstruction {
     /// 5. `[writable]` This account receives the refunded SOL after closing order token account
     /// 6. `[]` This program's derived address
     /// 7. `[]` The token program
-    Withdraw,
+    Withdraw {
+        /// should we close the order account?
+        #[allow(dead_code)] // not dead code..
+        close_order_account: Option<bool>,
+    },
     /// Initialize a subscription
     ///
     /// A subscription is possible by relying on a merchant account that was created with
@@ -264,7 +269,7 @@ pub fn chain_checkout(
     sponsor: Pubkey,
     pda: Pubkey,
     amount: u64,
-    order_items: BTreeMap<String, u64>,
+    order_items: OrderItems,
     data: Option<String>,
 ) -> Instruction {
     Instruction {
@@ -304,6 +309,7 @@ pub fn withdraw(
     account_to_receive_sol_refund: Pubkey,
     pda: Pubkey,
     subscription: Option<Pubkey>,
+    close_order_account: Option<bool>,
 ) -> Instruction {
     let mut account_metas = vec![
         AccountMeta::new(signer, true),
@@ -323,7 +329,7 @@ pub fn withdraw(
     Instruction {
         program_id,
         accounts: account_metas,
-        data: PaymentProcessorInstruction::Withdraw.try_to_vec().unwrap(),
+        data: PaymentProcessorInstruction::Withdraw { close_order_account }.try_to_vec().unwrap(),
     }
 }
 
@@ -683,7 +689,7 @@ mod test {
 
     async fn create_chain_checkout_transaction(
         amount: u64,
-        order_items: &BTreeMap<String, u64>,
+        order_items: &OrderItems,
         data: Option<String>,
         merchant_result: &mut MerchantResult,
         mint_keypair: &Keypair,
@@ -724,7 +730,7 @@ mod test {
 
     async fn create_order_chain_checkout(
         amount: u64,
-        order_items: &BTreeMap<String, u64>,
+        order_items: &OrderItems,
         data: Option<String>,
         merchant_result: &mut MerchantResult,
         mint_keypair: &Keypair,
@@ -963,7 +969,7 @@ mod test {
 
     async fn run_chain_checkout_tests(
         amount: u64,
-        order_items: &BTreeMap<String, u64>,
+        order_items: &OrderItems,
         data: Option<String>,
         merchant_result: &mut MerchantResult,
         order_acc_pubkey: &Pubkey,
@@ -1001,7 +1007,7 @@ mod test {
         let mint_keypair = Keypair::new();
         let amount: u64 = 2000000000;
 
-        let mut order_items: BTreeMap<String, u64> = BTreeMap::new();
+        let mut order_items: OrderItems = BTreeMap::new();
         order_items.insert("1".to_string(), 1);
         order_items.insert("3".to_string(), 1);
 
@@ -1049,7 +1055,7 @@ mod test {
         let mint_keypair = Keypair::new();
         let amount: u64 = 2000000000;
 
-        let mut order_items: BTreeMap<String, u64> = BTreeMap::new();
+        let mut order_items: OrderItems = BTreeMap::new();
         order_items.insert("1".to_string(), 1);
 
         let merchant_data = format!(
@@ -1097,7 +1103,7 @@ mod test {
         registered_mint: &Keypair,
         expected_error: InstructionError,
     ) -> bool {
-        let mut order_items: BTreeMap<String, u64> = BTreeMap::new();
+        let mut order_items: OrderItems = BTreeMap::new();
         order_items.insert(format!("{}", order_item_id), 1);
 
         let mut merchant_data = String::from("5");
@@ -1357,6 +1363,7 @@ mod test {
                 account_to_receive_sol_refund_pubkey,
                 pda,
                 Option::None,
+                Some(false),
             )],
             Some(&payer.pubkey()),
         );
@@ -1749,6 +1756,7 @@ mod test {
                         Pubkey::from_str(PROGRAM_OWNER).unwrap(),
                         pda,
                         Some(subscription),
+                        Option::None,
                     )],
                     Some(&subscribe_result.1 .3.pubkey()),
                 );
