@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Serialize, Debug, Deserialize, PartialEq)]
 /// Subscription package
@@ -37,3 +38,5 @@ pub struct Item {
     /// the mint (currency) used for this package
     pub mint: String,
 }
+
+pub type OrderItems = BTreeMap<String, u64>;
