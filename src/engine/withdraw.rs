@@ -95,6 +95,7 @@ pub fn process_withdraw_payment(
         return Err(PaymentProcessorError::AlreadyWithdrawn.into());
     }
     // check if this is for a subscription payment that has a trial period
+    // TODO: use account discriminator to check for merchant account for subscriptions
     if merchant_account.data.contains(PACKAGES) && merchant_account.data.contains(TRIAL) {
         let subscription_info = next_account_info(account_info_iter)?;
         // ensure subscription account is owned by this program
@@ -166,6 +167,7 @@ pub fn process_withdraw_payment(
         None => false,
         Some(value) => value,
     };
+    // TODO: add test(s) for closed order account
     if should_close_order_acc {
         if merchant_info.owner != signer_info.key {
             msg!("Error: Only merchant account owner can close order account");
