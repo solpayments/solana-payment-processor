@@ -65,7 +65,7 @@ mod test {
     #[tokio::test]
     async fn test_get_order_account_size() {
         assert_eq!(
-            197,
+            198,
             get_order_account_size(
                 &String::from("123456"),
                 &String::from("password"),
@@ -73,14 +73,14 @@ mod test {
             )
         );
         assert_eq!(
-            189,
+            190,
             get_order_account_size(
                 &String::from("test-6"),
                 &String::from(""),
                 &String::from(r#"{"a": "b"}"#)
             )
         );
-        assert_eq!(422, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type"), &String::from(r#"{"a": "b"}"#)));
+        assert_eq!(423, get_order_account_size(&String::from("WSUDUBDG2"), &String::from("Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type"), &String::from(r#"{"a": "b"}"#)));
     }
 
     #[tokio::test]
@@ -97,11 +97,11 @@ mod test {
     #[tokio::test]
     async fn test_get_subscription_account_size() {
         assert_eq!(
-            99,
+            100,
             get_subscription_account_size(&String::from("a"), &String::from("b"))
         );
         assert_eq!(
-            131,
+            132,
             get_subscription_account_size(
                 &String::from("Annual"),
                 &String::from(r#"{"foo": "bar", "price": 200}"#)
