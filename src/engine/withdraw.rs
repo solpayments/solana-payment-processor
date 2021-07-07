@@ -167,9 +167,8 @@ pub fn process_withdraw_payment(
         None => false,
         Some(value) => value,
     };
-    // TODO: add test(s) for closed order account
     if should_close_order_acc {
-        if merchant_info.owner != signer_info.key {
+        if merchant_account.owner != signer_info.key.to_bytes() {
             msg!("Error: Only merchant account owner can close order account");
             return Err(ProgramError::MissingRequiredSignature);
         }
