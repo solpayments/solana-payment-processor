@@ -1309,12 +1309,20 @@ mod test {
         };
     }
 
-    #[tokio::test]
-    async fn test_withdraw() {
+    async fn withdraw_helper(
+        amount: u64,
+        close_order_account: Option<bool>,
+    ) -> (
+        BanksClient,
+        Option<solana_sdk::account::Account>,
+        Pubkey,
+        Pubkey,
+        Option<solana_sdk::account::Account>,
+        Option<solana_sdk::account::Account>,
+    ) {
         let mut merchant_result =
             create_merchant_account(Option::None, Option::None, Option::None, Option::None).await;
         let merchant_token_keypair = Keypair::new();
-        let amount: u64 = 1234567890;
         let order_id = String::from("PD17CUSZ75");
         let secret = String::from("i love oov");
         let mint_keypair = Keypair::new();
@@ -1363,6 +1371,12 @@ mod test {
             .await
             .unwrap();
 
+        let previous_order_account = banks_client.get_account(order_acc_pubkey).await;
+        let previous_order_account = match previous_order_account {
+            Err(error) => panic!("Problem: {:?}", error),
+            Ok(value) => value,
+        };
+
         // call withdraw ix
         let mut transaction = Transaction::new_with_payer(
             &[withdraw(
@@ -1375,31 +1389,12 @@ mod test {
                 account_to_receive_sol_refund_pubkey,
                 pda,
                 Option::None,
-                Some(false),
+                close_order_account,
             )],
             Some(&payer.pubkey()),
         );
         transaction.sign(&[&payer], recent_blockhash);
         assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-
-        // test contents of order account
-        let order_account = banks_client.get_account(order_acc_pubkey).await;
-        let order_account = match order_account {
-            Err(error) => panic!("Problem: {:?}", error),
-            Ok(value) => value,
-        };
-        let order_data = match order_account.clone() {
-            None => panic!("Oo"),
-            Some(value) => match OrderAccount::unpack(&value.data) {
-                Ok(data) => data,
-                Err(error) => panic!("Problem: {:?}", error),
-            },
-        };
-        assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
-        assert_eq!(amount, order_data.expected_amount);
-        assert_eq!(amount, order_data.paid_amount);
-        assert_eq!(order_id, order_data.order_id);
-        assert_eq!(secret, order_data.secret);
 
         // test contents of merchant token account
         let merchant_token_account = banks_client
@@ -1415,8 +1410,46 @@ mod test {
             },
             Err(error) => panic!("Problem: {:?}", error),
         };
-        assert_eq!(order_data.paid_amount, merchant_account_data.amount);
+        assert_eq!(amount, merchant_account_data.amount);
 
+        let order_account = banks_client.get_account(order_acc_pubkey).await;
+        let order_account = match order_account {
+            Err(error) => panic!("Problem: {:?}", error),
+            Ok(value) => value,
+        };
+
+        (
+            banks_client,
+            order_account,
+            order_payment_token_acc_pubkey,
+            account_to_receive_sol_refund_pubkey,
+            account_to_receive_sol_refund_before,
+            previous_order_account,
+        )
+    }
+
+    #[tokio::test]
+    async fn test_withdraw() {
+        let amount: u64 = 1234567890;
+        let (
+            mut banks_client,
+            order_account,
+            order_payment_token_acc_pubkey,
+            account_to_receive_sol_refund_pubkey,
+            account_to_receive_sol_refund_before,
+            _previous_order_account,
+        ) = withdraw_helper(amount, Some(false)).await;
+        // test contents of order account
+        let order_data = match order_account.clone() {
+            None => panic!("Oo"),
+            Some(value) => match OrderAccount::unpack(&value.data) {
+                Ok(data) => data,
+                Err(error) => panic!("Problem: {:?}", error),
+            },
+        };
+        assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
+        assert_eq!(amount, order_data.expected_amount);
+        assert_eq!(amount, order_data.paid_amount);
         // test that token account was closed and that the refund was sent to expected account
         let order_payment_token_acc = banks_client
             .get_account(order_payment_token_acc_pubkey)
@@ -1431,6 +1464,37 @@ mod test {
             &account_to_receive_sol_refund_before,
             &account_to_receive_sol_refund_after,
             &Option::None,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn test_withdraw_close_order_account() {
+        let amount: u64 = 10001;
+        let (
+            mut banks_client,
+            order_account,
+            order_payment_token_acc_pubkey,
+            account_to_receive_sol_refund_pubkey,
+            account_to_receive_sol_refund_before,
+            previous_order_account,
+        ) = withdraw_helper(amount, Some(true)).await;
+        // test closure of order account
+        assert!(order_account.is_none());
+        // test that accounts were closed and that refunds sent to expected account
+        let order_payment_token_acc = banks_client
+            .get_account(order_payment_token_acc_pubkey)
+            .await
+            .unwrap();
+        let account_to_receive_sol_refund_after = banks_client
+            .get_account(account_to_receive_sol_refund_pubkey)
+            .await
+            .unwrap();
+        run_order_token_account_refund_tests(
+            &order_payment_token_acc,
+            &account_to_receive_sol_refund_before,
+            &account_to_receive_sol_refund_after,
+            &previous_order_account,
         )
         .await;
     }
