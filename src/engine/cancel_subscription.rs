@@ -1,7 +1,11 @@
 use crate::{
-    engine::common::subscribe_checks,
+    engine::common::{subscribe_checks, transfer_sol},
     engine::constants::PDA_SEED,
-    state::{OrderAccount, OrderStatus, Serdes, SubscriptionAccount, SubscriptionStatus},
+    error::PaymentProcessorError,
+    state::{
+        Discriminator, IsClosed, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
+        SubscriptionStatus,
+    },
 };
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -60,6 +64,13 @@ pub fn process_cancel_subscription(program_id: &Pubkey, accounts: &[AccountInfo]
     let mut subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
     if !subscription_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
+    }
+    if subscription_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
+    }
+    if subscription_account.discriminator != Discriminator::Subscription as u8 {
+        msg!("Error: Invalid subscription account");
+        return Err(ProgramError::InvalidAccountData);
     }
     let (mut order_account, package) = subscribe_checks(
         program_id,
@@ -126,6 +137,14 @@ pub fn process_cancel_subscription(program_id: &Pubkey, accounts: &[AccountInfo]
                 pda_info.clone(),
             ],
             &[&[&PDA_SEED, &[pda_nonce]]],
+        )?;
+        // mark order account as closed
+        order_account.discriminator = Discriminator::Closed as u8;
+        // Transfer all the sol from the order account to the sol_destination.
+        transfer_sol(
+            order_info.clone(),
+            account_to_receive_sol_refund_info.clone(),
+            order_info.lamports(),
         )?;
         // Updating order account information...
         order_account.status = OrderStatus::Cancelled as u8;
