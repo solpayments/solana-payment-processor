@@ -70,7 +70,6 @@ pub fn process_register_merchant(
     )?;
 
     // get merchant account type
-    // TODO: add test(s) that this is set correctly
     let maybe_subscription_merchant: Result<Packages, JSONError> = serde_json::from_str(&data);
     let merchant_account_type: u8 = match maybe_subscription_merchant {
         Ok(_value) => {
