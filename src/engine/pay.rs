@@ -91,6 +91,11 @@ pub fn chain_checkout_checks(
     order_items: &OrderItems,
     amount: u64,
 ) -> ProgramResult {
+    if merchant_account.discriminator != Discriminator::MerchantChainCheckout as u8 {
+        msg!("Error: Invalid merchant account");
+        return Err(PaymentProcessorError::InvalidMerchantData.into());
+    }
+
     let merchant_json_data: Result<BTreeMap<String, Item>, JSONError> =
         serde_json::from_str(&merchant_account.data);
 

@@ -1,9 +1,10 @@
 use crate::{
     engine::common::{get_subscription_package, transfer_sol, verify_subscription_order},
-    engine::constants::{PACKAGES, PDA_SEED, TRIAL},
+    engine::constants::PDA_SEED,
     error::PaymentProcessorError,
     state::{
-        Discriminator, IsClosed, MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount,
+        Discriminator, IsClosed, MerchantAccount, OrderAccount, OrderStatus, Serdes,
+        SubscriptionAccount,
     },
 };
 use solana_program::program_pack::Pack;
@@ -95,8 +96,7 @@ pub fn process_withdraw_payment(
         return Err(PaymentProcessorError::AlreadyWithdrawn.into());
     }
     // check if this is for a subscription payment that has a trial period
-    // TODO: use account discriminator to check for merchant account for subscriptions
-    if merchant_account.data.contains(PACKAGES) && merchant_account.data.contains(TRIAL) {
+    if merchant_account.discriminator == Discriminator::MerchantSubscriptionWithTrial as u8 {
         let subscription_info = next_account_info(account_info_iter)?;
         // ensure subscription account is owned by this program
         if *subscription_info.owner != *program_id {
