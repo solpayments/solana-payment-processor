@@ -1,7 +1,7 @@
 use crate::{
     engine::json::{OrderSubscription, Package, Packages},
     error::PaymentProcessorError,
-    state::{IsClosed, MerchantAccount, OrderAccount, OrderStatus, Serdes},
+    state::{Discriminator, IsClosed, MerchantAccount, OrderAccount, OrderStatus, Serdes},
 };
 use serde_json::Error as JSONError;
 use solana_program::program_pack::Pack;
@@ -86,6 +86,14 @@ pub fn subscribe_checks(
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
+    let allowed_merchant_account_types = vec![
+        Discriminator::MerchantSubscription as u8,
+        Discriminator::MerchantSubscriptionWithTrial as u8,
+    ];
+    if !allowed_merchant_account_types.contains(&merchant_account.discriminator) {
+        msg!("Error: Invalid merchant account");
+        return Err(ProgramError::InvalidAccountData);
+    }
     // get the order account
     let order_account = OrderAccount::unpack(&order_info.data.borrow())?;
     if order_account.is_closed() {
@@ -93,6 +101,10 @@ pub fn subscribe_checks(
     }
     if !order_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
+    }
+    if order_account.discriminator != Discriminator::OrderExpressCheckout as u8 {
+        msg!("Error: Invalid order account");
+        return Err(ProgramError::InvalidAccountData);
     }
     // ensure this order is for this subscription
     verify_subscription_order(subscription_info, &order_account)?;
