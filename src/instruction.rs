@@ -2085,10 +2085,7 @@ mod test {
         // period end has changed to an earlier time
         assert!(previous_subscription_account.period_end > subscription_account.period_end);
         // order account was closed
-        match order_account {
-            None => (),
-            Some(_value) => panic!("Order account was not closed"),
-        };
+        assert!(order_account.is_none());
         // amount was withdrawn
         assert_eq!(6699, refund_token_account.amount);
         // order token account was closed and SOL refunded
