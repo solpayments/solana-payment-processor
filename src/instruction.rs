@@ -1,3 +1,4 @@
+use crate::engine::json::OrderItems;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -6,7 +7,6 @@ use solana_program::{
 };
 use spl_token::{self};
 use std::collections::BTreeMap;
-use crate::engine::json::OrderItems;
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub enum PaymentProcessorInstruction {
@@ -92,7 +92,7 @@ pub enum PaymentProcessorInstruction {
         amount: u64,
         /// the external order id (as in issued by the merchant)
         #[allow(dead_code)] // not dead code..
-        order_items: BTreeMap<String, u64>,  // use this instead of OrderItems for readability in API
+        order_items: BTreeMap<String, u64>, // use this instead of OrderItems for readability in API
         /// arbitrary merchant data (maybe as a JSON string)
         #[allow(dead_code)] // not dead code..
         data: Option<String>,
@@ -329,7 +329,11 @@ pub fn withdraw(
     Instruction {
         program_id,
         accounts: account_metas,
-        data: PaymentProcessorInstruction::Withdraw { close_order_account }.try_to_vec().unwrap(),
+        data: PaymentProcessorInstruction::Withdraw {
+            close_order_account,
+        }
+        .try_to_vec()
+        .unwrap(),
     }
 }
 
@@ -1280,17 +1284,25 @@ mod test {
         order_payment_token_acc: &Option<solana_sdk::account::Account>,
         account_to_receive_sol_refund_before: &Option<solana_sdk::account::Account>,
         account_to_receive_sol_refund_after: &Option<solana_sdk::account::Account>,
+        previous_order_account: &Option<solana_sdk::account::Account>,
     ) {
+        // order token account is closed
         assert!(order_payment_token_acc.is_none());
+        let order_account_rent = match previous_order_account {
+            None => 0,
+            Some(account) => account.lamports,
+        };
         match account_to_receive_sol_refund_before {
             None => panic!("Oo"),
             Some(account_before) => match account_to_receive_sol_refund_after {
                 None => panic!("Oo"),
                 Some(account_after) => {
-                    // the before balance has increased by the rent amount
+                    // the before balance has increased by the rent amount of both token and order account
                     assert_eq!(
                         account_before.lamports,
-                        account_after.lamports - Rent::default().minimum_balance(TokenAccount::LEN)
+                        account_after.lamports
+                            - (Rent::default().minimum_balance(TokenAccount::LEN)
+                                + order_account_rent)
                     );
                 }
             },
@@ -1372,15 +1384,16 @@ mod test {
 
         // test contents of order account
         let order_account = banks_client.get_account(order_acc_pubkey).await;
-        let order_data = match order_account {
-            Ok(data) => match data {
-                None => panic!("Oo"),
-                Some(value) => match OrderAccount::unpack(&value.data) {
-                    Ok(data) => data,
-                    Err(error) => panic!("Problem: {:?}", error),
-                },
-            },
+        let order_account = match order_account {
             Err(error) => panic!("Problem: {:?}", error),
+            Ok(value) => value,
+        };
+        let order_data = match order_account.clone() {
+            None => panic!("Oo"),
+            Some(value) => match OrderAccount::unpack(&value.data) {
+                Ok(data) => data,
+                Err(error) => panic!("Problem: {:?}", error),
+            },
         };
         assert_eq!(OrderStatus::Withdrawn as u8, order_data.status);
         assert_eq!(amount, order_data.expected_amount);
@@ -1417,6 +1430,7 @@ mod test {
             &order_payment_token_acc,
             &account_to_receive_sol_refund_before,
             &account_to_receive_sol_refund_after,
+            &Option::None,
         )
         .await;
     }
@@ -1812,20 +1826,22 @@ mod test {
     }
 
     async fn run_subscription_cancel_tests(
+        amount: u64,
         name: &str,
         packages: &str,
         mint_keypair: &Keypair,
     ) -> Option<(
         SubscriptionAccount,
-        OrderAccount,
+        Option<solana_sdk::account::Account>,
         Option<solana_sdk::account::Account>,
         spl_token::state::Account,
         SubscriptionAccount,
         Option<solana_sdk::account::Account>,
         Option<solana_sdk::account::Account>,
+        Option<solana_sdk::account::Account>,
     )> {
         // create the subscription
-        let result = run_subscribe_tests(1000000, name, &packages, &mint_keypair).await;
+        let result = run_subscribe_tests(amount, name, &packages, &mint_keypair).await;
         assert!(result.0.is_ok());
         let subscribe_result = result.1;
         match subscribe_result {
@@ -1847,6 +1863,13 @@ mod test {
                 };
 
                 let order_acc_pubkey = subscribe_result.2;
+                let previous_order_account =
+                    subscribe_result.1 .2.get_account(order_acc_pubkey).await;
+                let previous_order_account = match previous_order_account {
+                    Err(error) => panic!("Problem: {:?}", error),
+                    Ok(value) => value,
+                };
+
                 let refund_token_acc_keypair = Keypair::new();
                 let (pda, _bump_seed) =
                     Pubkey::find_program_address(&[PDA_SEED], &subscribe_result.1 .0);
@@ -1916,13 +1939,7 @@ mod test {
                 };
                 let order_account = subscribe_result.1 .2.get_account(order_acc_pubkey).await;
                 let order_account = match order_account {
-                    Ok(data) => match data {
-                        None => panic!("Oo"),
-                        Some(value) => match OrderAccount::unpack(&value.data) {
-                            Ok(data) => data,
-                            Err(error) => panic!("Problem: {:?}", error),
-                        },
-                    },
+                    Ok(value) => value,
                     Err(error) => panic!("Problem: {:?}", error),
                 };
                 let order_token_account = subscribe_result
@@ -1960,6 +1977,7 @@ mod test {
                     order_token_account,
                     refund_token_account,
                     previous_subscription_account,
+                    previous_order_account,
                     account_to_receive_sol_refund_before,
                     account_to_receive_sol_refund_after,
                 ))
@@ -1973,12 +1991,12 @@ mod test {
         let name = "trialFirst";
         // create a package that has a short trial period
         let packages = format!(
-            r#"{{"packages":[{{"name":"{name}","price":99,"trial":604800,"duration":604800,"mint":"{mint}"}}]}}"#,
+            r#"{{"packages":[{{"name":"{name}","price":6699,"trial":604800,"duration":604800,"mint":"{mint}"}}]}}"#,
             mint = mint_keypair.pubkey().to_string(),
             name = name
         );
         // cancel goes okay
-        let result = run_subscription_cancel_tests(name, &packages, &mint_keypair)
+        let result = run_subscription_cancel_tests(6699, name, &packages, &mint_keypair)
             .await
             .unwrap();
         let (
@@ -1987,6 +2005,7 @@ mod test {
             order_token_account,
             refund_token_account,
             previous_subscription_account,
+            previous_order_account,
             account_to_receive_sol_refund_before,
             account_to_receive_sol_refund_after,
         ) = result;
@@ -2001,15 +2020,19 @@ mod test {
         );
         // period end has changed to an earlier time
         assert!(previous_subscription_account.period_end > subscription_account.period_end);
-        // order account was cancelled
-        assert_eq!(OrderStatus::Cancelled as u8, order_account.status);
+        // order account was closed
+        match order_account {
+            None => (),
+            Some(_value) => panic!("Order account was not closed"),
+        };
         // amount was withdrawn
-        assert_eq!(order_account.paid_amount, refund_token_account.amount);
+        assert_eq!(6699, refund_token_account.amount);
         // order token account was closed and SOL refunded
         run_order_token_account_refund_tests(
             &order_token_account,
             &account_to_receive_sol_refund_before,
             &account_to_receive_sol_refund_after,
+            &previous_order_account,
         )
         .await;
     }
@@ -2020,12 +2043,12 @@ mod test {
         let name = "trialFirst";
         // create a package that has a short trial period
         let packages = format!(
-            r#"{{"packages":[{{"name":"{name}","price":99,"trial":0,"duration":604800,"mint":"{mint}"}}]}}"#,
+            r#"{{"packages":[{{"name":"{name}","price":1337,"trial":0,"duration":604800,"mint":"{mint}"}}]}}"#,
             mint = mint_keypair.pubkey().to_string(),
             name = name
         );
         // cancel goes okay but no refund
-        let result = run_subscription_cancel_tests(name, &packages, &mint_keypair)
+        let result = run_subscription_cancel_tests(1337, name, &packages, &mint_keypair)
             .await
             .unwrap();
         let (
@@ -2034,6 +2057,7 @@ mod test {
             order_token_account,
             refund_token_account,
             previous_subscription_account,
+            previous_order_account,
             account_to_receive_sol_refund_before,
             account_to_receive_sol_refund_after,
         ) = result;
@@ -2051,6 +2075,21 @@ mod test {
             subscription_account.period_end
         );
         // order account was not changed
+        let order_account = match order_account {
+            None => panic!("Oo"),
+            Some(value) => match OrderAccount::unpack(&value.data) {
+                Ok(data) => data,
+                Err(error) => panic!("Problem: {:?}", error),
+            },
+        };
+        let previous_order_account = match previous_order_account {
+            None => panic!("Oo"),
+            Some(value) => match OrderAccount::unpack(&value.data) {
+                Ok(data) => data,
+                Err(error) => panic!("Problem: {:?}", error),
+            },
+        };
+        assert_eq!(order_account, previous_order_account);
         assert_eq!(OrderStatus::Paid as u8, order_account.status);
         // nothing was refunded
         assert_eq!(0, refund_token_account.amount);
