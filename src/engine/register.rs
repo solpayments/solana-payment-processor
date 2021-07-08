@@ -1,8 +1,12 @@
 use crate::{
-    engine::constants::{DEFAULT_DATA, DEFAULT_FEE_IN_LAMPORTS, MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER},
-    state::{MerchantAccount, MerchantStatus, Serdes},
+    engine::constants::{
+        DEFAULT_DATA, DEFAULT_FEE_IN_LAMPORTS, MERCHANT, MIN_FEE_IN_LAMPORTS, PROGRAM_OWNER, TRIAL,
+    },
+    engine::json::{Item, Packages},
+    state::{Discriminator, MerchantAccount, Serdes},
     utils::get_merchant_account_size,
 };
+use serde_json::Error as JSONError;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -13,6 +17,7 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
 };
+use std::collections::BTreeMap;
 use std::str::FromStr;
 
 pub fn process_register_merchant(
@@ -64,12 +69,32 @@ pub fn process_register_merchant(
         ],
     )?;
 
+    // get merchant account type
+    let maybe_subscription_merchant: Result<Packages, JSONError> = serde_json::from_str(&data);
+    let merchant_account_type: u8 = match maybe_subscription_merchant {
+        Ok(_value) => {
+            if data.contains(TRIAL) {
+                Discriminator::MerchantSubscriptionWithTrial as u8
+            } else {
+                Discriminator::MerchantSubscription as u8
+            }
+        }
+        Err(_error) => {
+            let maybe_chain_checkout: Result<BTreeMap<String, Item>, JSONError> =
+                serde_json::from_str(&data);
+            match maybe_chain_checkout {
+                Ok(_value) => Discriminator::MerchantChainCheckout as u8,
+                Err(_error) => Discriminator::Merchant as u8,
+            }
+        }
+    };
+
     // get the merchant account data
     // TODO: ensure this account is not already initialized
     let mut merchant_account_data = merchant_info.try_borrow_mut_data()?;
     // save it
     let merchant = MerchantAccount {
-        status: MerchantStatus::Initialized as u8,
+        discriminator: merchant_account_type,
         owner: signer_info.key.to_bytes(),
         sponsor: match possible_sponsor_info {
             Ok(sponsor_info) => sponsor_info.key.to_bytes(),
@@ -80,7 +105,10 @@ pub fn process_register_merchant(
             Some(value) => {
                 let mut result = value;
                 if result < MIN_FEE_IN_LAMPORTS {
-                    msg!("Info: setting minimum transaction fee of {:?}", MIN_FEE_IN_LAMPORTS);
+                    msg!(
+                        "Info: setting minimum transaction fee of {:?}",
+                        MIN_FEE_IN_LAMPORTS
+                    );
                     result = MIN_FEE_IN_LAMPORTS;
                 }
                 result

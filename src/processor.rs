@@ -41,9 +41,9 @@ impl PaymentProcessorInstruction {
                 msg!("SolPayments: ChainCheckout");
                 process_chain_checkout(program_id, accounts, amount, order_items, data)
             }
-            PaymentProcessorInstruction::Withdraw => {
+            PaymentProcessorInstruction::Withdraw { close_order_account } => {
                 msg!("SolPayments: Withdraw");
-                process_withdraw_payment(program_id, accounts)
+                process_withdraw_payment(program_id, accounts, close_order_account)
             }
             PaymentProcessorInstruction::Subscribe { name, data } => {
                 msg!("SolPayments: Subscribe");

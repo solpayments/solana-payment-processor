@@ -1,7 +1,7 @@
 use crate::engine::common::subscribe_checks;
 use crate::engine::constants::DEFAULT_DATA;
 use crate::error::PaymentProcessorError;
-use crate::state::{Serdes, SubscriptionAccount, SubscriptionStatus};
+use crate::state::{Discriminator, Serdes, SubscriptionAccount, SubscriptionStatus};
 use crate::utils::get_subscription_account_size;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -105,6 +105,7 @@ pub fn process_subscribe(
     let mut subscription_data = subscription_info.try_borrow_mut_data()?;
     // Saving subscription information...
     let subscription = SubscriptionAccount {
+        discriminator: Discriminator::Subscription as u8,
         status: SubscriptionStatus::Initialized as u8,
         owner: signer_info.key.to_bytes(),
         merchant: merchant_info.key.to_bytes(),

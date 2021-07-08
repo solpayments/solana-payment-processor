@@ -16,6 +16,9 @@ pub enum PaymentProcessorError {
     /// Cannot withdraw during trial period
     #[error("Error: Cannot withdraw during trial period")]
     CantWithdrawDuringTrial,
+    /// Account already closed
+    #[error("Error: Account already closed")]
+    ClosedAccount,
     /// Invalid instruction
     #[error("Error: Invalid Instruction")]
     InvalidInstruction,

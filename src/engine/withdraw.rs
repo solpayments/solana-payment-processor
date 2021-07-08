@@ -1,8 +1,11 @@
 use crate::{
-    engine::common::{get_subscription_package, verify_subscription_order},
-    engine::constants::{PACKAGES, PDA_SEED, TRIAL},
+    engine::common::{get_subscription_package, transfer_sol, verify_subscription_order},
+    engine::constants::PDA_SEED,
     error::PaymentProcessorError,
-    state::{MerchantAccount, OrderAccount, OrderStatus, Serdes, SubscriptionAccount},
+    state::{
+        Discriminator, IsClosed, MerchantAccount, OrderAccount, OrderStatus, Serdes,
+        SubscriptionAccount,
+    },
 };
 use solana_program::program_pack::Pack;
 use solana_program::{
@@ -17,7 +20,11 @@ use solana_program::{
 };
 use spl_token::{self, state::Account as TokenAccount};
 
-pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+pub fn process_withdraw_payment(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    close_order_account: Option<bool>,
+) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let signer_info = next_account_info(account_info_iter)?;
     let order_info = next_account_info(account_info_iter)?;
@@ -55,6 +62,9 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     }
     // get the merchant account
     let merchant_account = MerchantAccount::unpack(&merchant_info.data.borrow())?;
+    if merchant_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
+    }
     if !merchant_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
@@ -67,6 +77,9 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
     }
     // get the order account
     let mut order_account = OrderAccount::unpack(&order_info.data.borrow())?;
+    if order_account.is_closed() {
+        return Err(PaymentProcessorError::ClosedAccount.into());
+    }
     if !order_account.is_initialized() {
         return Err(ProgramError::UninitializedAccount);
     }
@@ -83,7 +96,7 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         return Err(PaymentProcessorError::AlreadyWithdrawn.into());
     }
     // check if this is for a subscription payment that has a trial period
-    if merchant_account.data.contains(PACKAGES) && merchant_account.data.contains(TRIAL) {
+    if merchant_account.discriminator == Discriminator::MerchantSubscriptionWithTrial as u8 {
         let subscription_info = next_account_info(account_info_iter)?;
         // ensure subscription account is owned by this program
         if *subscription_info.owner != *program_id {
@@ -94,6 +107,9 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         verify_subscription_order(subscription_info, &order_account)?;
         // get the subscription account
         let subscription_account = SubscriptionAccount::unpack(&subscription_info.data.borrow())?;
+        if subscription_account.is_closed() {
+            return Err(PaymentProcessorError::ClosedAccount.into());
+        }
         if !subscription_account.is_initialized() {
             return Err(ProgramError::UninitializedAccount);
         }
@@ -145,6 +161,26 @@ pub fn process_withdraw_payment(program_id: &Pubkey, accounts: &[AccountInfo]) -
         ],
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
+
+    // check if order account should be closed
+    let should_close_order_acc: bool = match close_order_account {
+        None => false,
+        Some(value) => value,
+    };
+    if should_close_order_acc {
+        if merchant_account.owner != signer_info.key.to_bytes() {
+            msg!("Error: Only merchant account owner can close order account");
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+        // mark account as closed
+        order_account.discriminator = Discriminator::Closed as u8;
+        // Transfer all the sol from the order account to the sol_destination.
+        transfer_sol(
+            order_info.clone(),
+            account_to_receive_sol_refund_info.clone(),
+            order_info.lamports(),
+        )?;
+    }
 
     // Updating order account information...
     order_account.status = OrderStatus::Withdrawn as u8;
