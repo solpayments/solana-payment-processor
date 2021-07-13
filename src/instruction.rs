@@ -114,8 +114,9 @@ pub enum PaymentProcessorInstruction {
     /// 7. `[]` The token program
     Withdraw {
         /// should we close the order account?
+        /// can be sent as 0 for false; 1 for true from a dApp
         #[allow(dead_code)] // not dead code..
-        close_order_account: Option<bool>,
+        close_order_account: bool,
     },
     /// Initialize a subscription
     ///
@@ -309,7 +310,7 @@ pub fn withdraw(
     account_to_receive_sol_refund: Pubkey,
     pda: Pubkey,
     subscription: Option<Pubkey>,
-    close_order_account: Option<bool>,
+    close_order_account: bool,
 ) -> Instruction {
     let mut account_metas = vec![
         AccountMeta::new(signer, true),
@@ -1311,7 +1312,7 @@ mod test {
 
     async fn withdraw_helper(
         amount: u64,
-        close_order_account: Option<bool>,
+        close_order_account: bool,
     ) -> (
         BanksClient,
         Option<solana_sdk::account::Account>,
@@ -1438,7 +1439,7 @@ mod test {
             account_to_receive_sol_refund_pubkey,
             account_to_receive_sol_refund_before,
             _previous_order_account,
-        ) = withdraw_helper(amount, Some(false)).await;
+        ) = withdraw_helper(amount, false).await;
         // test contents of order account
         let order_data = match order_account.clone() {
             None => panic!("Oo"),
@@ -1478,7 +1479,7 @@ mod test {
             account_to_receive_sol_refund_pubkey,
             account_to_receive_sol_refund_before,
             previous_order_account,
-        ) = withdraw_helper(amount, Some(true)).await;
+        ) = withdraw_helper(amount, true).await;
         // test closure of order account
         assert!(order_account.is_none());
         // test that accounts were closed and that refunds sent to expected account
@@ -1834,7 +1835,7 @@ mod test {
                         Pubkey::from_str(PROGRAM_OWNER).unwrap(),
                         pda,
                         Some(subscription),
-                        Option::None,
+                        false,
                     )],
                     Some(&subscribe_result.1 .3.pubkey()),
                 );
