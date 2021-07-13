@@ -1,6 +1,6 @@
 use crate::engine::common::subscribe_checks;
 use crate::error::PaymentProcessorError;
-use crate::state::{Discriminator, IsClosed, Serdes, SubscriptionAccount};
+use crate::state::{Discriminator, IsClosed, Serdes, SubscriptionAccount, SubscriptionStatus};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -64,6 +64,7 @@ pub fn process_renew_subscription(
         subscription_account.period_end =
             subscription_account.period_end + (package.duration * quantity);
     }
+    subscription_account.status = SubscriptionStatus::Initialized as u8;
     SubscriptionAccount::pack(
         &subscription_account,
         &mut subscription_info.data.borrow_mut(),

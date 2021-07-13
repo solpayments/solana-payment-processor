@@ -23,7 +23,7 @@ use spl_token::{self, state::Account as TokenAccount};
 pub fn process_withdraw_payment(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    close_order_account: Option<bool>,
+    close_order_account: bool,
 ) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let signer_info = next_account_info(account_info_iter)?;
@@ -162,12 +162,7 @@ pub fn process_withdraw_payment(
         &[&[&PDA_SEED, &[pda_nonce]]],
     )?;
 
-    // check if order account should be closed
-    let should_close_order_acc: bool = match close_order_account {
-        None => false,
-        Some(value) => value,
-    };
-    if should_close_order_acc {
+    if close_order_account {
         if merchant_account.owner != signer_info.key.to_bytes() {
             msg!("Error: Only merchant account owner can close order account");
             return Err(ProgramError::MissingRequiredSignature);
